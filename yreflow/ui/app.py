@@ -111,6 +111,9 @@ class WolferyCommands(Provider):
                 yield Hit(score, matcher.highlight(name), partial(self.app.run_action, action), help=help_text)
 
 
+_UNIMPORTANT_STYLES = {"sleep", "leave", "arrive", "travel", "action", "wakeup"}
+
+
 class WolferyApp(App):
     """Main Textual application -- satisfies UIProtocol structurally."""
 
@@ -164,7 +167,7 @@ class WolferyApp(App):
         self.character_views: dict[str, dict] = {}
         self.unread_counts: dict[str, int] = {}
         self.character_order: list[str] = []
-        self.unimportant_styles = {"sleep", "leave", "arrive", "travel", "action", "wakeup"}
+        self.unimportant_styles = _UNIMPORTANT_STYLES
 
     def compose(self) -> ComposeResult:
         yield Header()

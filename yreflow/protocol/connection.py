@@ -11,6 +11,21 @@ from websockets.asyncio.client import connect
 
 _PEPPER = b"TheStoryStartsHere"
 
+_DEFAULT_SUBSCRIPTIONS = [
+    "subscribe.core.info",
+    "subscribe.tag.info",
+    "subscribe.mail.info",
+    "subscribe.note.info",
+    "subscribe.report.info",
+    "subscribe.support.info",
+    "subscribe.client.web.info",
+    "subscribe.core.nodes",
+    "call.core.getPlayer",
+    "call.core.getRoles",
+    "subscribe.tag.tags",
+    "subscribe.core.chars.awake",
+]
+
 from .state import State
 from .model_store import ModelStore
 from .events import EventBus
@@ -28,7 +43,7 @@ class WolferyConnection:
         self.event_bus = event_bus
 
         self.token: str | None = config.get("token")
-        self.default_subscriptions: list[str] = config["default_subscriptions"]
+        self.default_subscriptions: list[str] = _DEFAULT_SUBSCRIPTIONS
         self.auth_mode: str = "token" if self.token else "password"
         self.credentials: dict | None = None
 

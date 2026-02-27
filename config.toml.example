@@ -1,0 +1,8 @@
+# yreflow configuration
+# Place at ~/.config/yreflow/config.toml
+#
+# All settings are optional. The app works without a config file
+# (you'll be prompted to log in on startup).
+
+# Optional: skip the login screen by providing a token.
+# token = "your-wolfery-auth-token-here"
