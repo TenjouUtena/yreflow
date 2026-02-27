@@ -73,6 +73,9 @@ class WolferyConnection:
                     f,
                     lambda e, ch=character: self._process_backlog(ch, e),
                 )
+        elif path.endswith("ctrls.add") and isinstance(payload, dict) and "rid" in payload:
+            character = payload["rid"].split(".")[2]
+            await self.event_bus.publish("character.tab.needed", character=character)
 
     async def _process_backlog(self, character: str, backlog) -> None:
         for e in backlog.get("events", []):

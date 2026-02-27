@@ -123,9 +123,12 @@ def format_message(msg_text: str) -> str:
 
         out += ch
 
-    # Restore link placeholders with Rich link markup
+    # Restore link placeholders – render as underlined cyan text.
+    # Rich's [link=URL] syntax chokes on special chars in URLs (://, etc.),
+    # so we avoid it and just style the visible text.
     for i, (text, url) in enumerate(links):
         placeholder = _LINK_PLACEHOLDER.format(i)
-        out = out.replace(placeholder, f"[link={url}]{text}[/link]")
+        safe_text = text.replace("[", "\\[")
+        out = out.replace(placeholder, f"[underline cyan]{safe_text}[/underline cyan]")
 
     return out

@@ -34,6 +34,18 @@ class UIProtocol(Protocol):
         """Refresh the watch list sidebar."""
         ...
 
+    async def remove_character_tab(self, character: str) -> None:
+        """Remove the tab/view for a released character."""
+        ...
+
+    def get_known_characters(self) -> set[str]:
+        """Return set of character IDs that have active tabs."""
+        ...
+
+    async def display_look(self, data: dict) -> None:
+        """Display the look modal (room or character)."""
+        ...
+
     async def log_raw(self, text: str) -> None:
         """Log raw protocol text (debug)."""
         ...

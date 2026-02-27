@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 class CommandResult:
     success: bool = True
     notification: str | None = None
-    exit_app: bool = False
+    look_data: dict | None = None
 
 
 class CommandHandler:
@@ -178,6 +178,16 @@ class CommandHandler:
                 (lambda cmd: cmd.startswith("join "), lambda cmd: cmd[5:]),
             ],
             "function": self.handle_join,
+        }
+
+        patterns["look"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "look", lambda cmd: None),
+                (lambda cmd: cmd.strip() == "l", lambda cmd: None),
+                (lambda cmd: cmd.startswith("look "), lambda cmd: cmd[5:]),
+                (lambda cmd: cmd.startswith("l "), lambda cmd: cmd[2:]),
+            ],
+            "function": self.handle_look,
         }
 
         for style in patterns:
@@ -364,7 +374,7 @@ class CommandHandler:
         await self.conn.send(
             f"call.core.char.{character}.ctrl.release", {}
         )
-        return CommandResult(notification="Character released", exit_app=True)
+        return CommandResult(notification="Character released")
 
     async def handle_focus(self, content, character) -> CommandResult:
         m = re.match(r"([\w ]+)=(.*)", content, re.DOTALL)
@@ -415,3 +425,140 @@ class CommandHandler:
             f"call.core.char.{character}.ctrl.join", {"charId": target_id}
         )
         return CommandResult(notification=f"Joining {name_to_join}...")
+
+    async def handle_look(self, content, character) -> CommandResult:
+        if content is None:
+            return self._look_room(character)
+        return await self._look_character(content, character)
+
+    def _look_room(self, character: str) -> CommandResult:
+        """Gather room data from the store and return it for display."""
+        try:
+            room_pointer = self.store.get(
+                f"core.char.{character}.owned.inRoom"
+            )["rid"]
+            room_id = room_pointer.split(".")[2]
+        except KeyError:
+            return CommandResult(success=False, notification="Could not determine current room.")
+
+        room_name = self.store.get_room_attribute(room_id, "name") or "Unknown Room"
+        room_desc = self.store.get_room_attribute(room_id, "desc") or ""
+
+        # Exits
+        exits = []
+        try:
+            room_exits = self.store.get(room_pointer + ".exits._value")
+            for e in room_exits:
+                try:
+                    exit_model = self.store.get(e["rid"])
+                    keys = exit_model.get("keys", {}).get("data", [])
+                    exits.append({
+                        "name": exit_model.get("name", "?"),
+                        "keys": ", ".join(keys),
+                    })
+                except KeyError:
+                    continue
+        except KeyError:
+            pass
+
+        # Area hierarchy
+        areas = []
+        try:
+            room_model = self.store.get(f"core.room.{room_id}")
+            area_ref = room_model.get("area", {})
+            if isinstance(area_ref, dict) and "rid" in area_ref:
+                area_path = area_ref["rid"]
+                while area_path:
+                    try:
+                        area = self.store.get(area_path)
+                        # Area may be nested under .details
+                        details = area.get("details", area)
+                        area_name = details.get("name", "")
+                        area_about = details.get("about", "")
+                        area_pop = details.get("pop", 0)
+                        if area_name:
+                            areas.append({
+                                "name": area_name,
+                                "about": area_about,
+                                "pop": area_pop,
+                            })
+                        # Traverse parent
+                        parent = area.get("parent") or details.get("parent")
+                        if isinstance(parent, dict) and "rid" in parent:
+                            area_path = parent["rid"]
+                        else:
+                            area_path = None
+                    except KeyError:
+                        break
+        except KeyError:
+            pass
+
+        return CommandResult(look_data={
+            "type": "room",
+            "name": room_name,
+            "desc": room_desc,
+            "exits": exits,
+            "areas": areas,
+        })
+
+    async def _look_character(self, name_str: str, character: str) -> CommandResult:
+        """Look at a character: send ctrl.look, then gather data on response."""
+        try:
+            target_id = parse_name(self.store, name_str.strip())
+        except NameParseException as e:
+            return CommandResult(success=False, notification=str(e))
+
+        msg_id = await self.conn.look_at(target_id, character)
+        self.conn.add_message_wait(
+            msg_id,
+            lambda _result, tid=target_id: self._on_look_result(tid),
+        )
+        return CommandResult(notification="Looking...")
+
+    async def _on_look_result(self, char_id: str) -> None:
+        """Called when the look_at response arrives. Publishes look data."""
+        data = self._gather_character_data(char_id)
+        await self.conn.event_bus.publish("look.result", data=data)
+
+    def _gather_character_data(self, char_id: str) -> dict:
+        """Read character attributes from the store."""
+        s = self.store
+        name = s.get_character_attribute(char_id, "name") or "?"
+        surname = s.get_character_attribute(char_id, "surname") or ""
+        full_name = f"{name} {surname}".strip()
+        species = s.get_character_attribute(char_id, "species") or ""
+        gender = s.get_character_attribute(char_id, "gender") or ""
+        desc = s.get_character_attribute(char_id, "desc") or ""
+        about = s.get_character_attribute(char_id, "about") or ""
+
+        # Tags (likes/dislikes)
+        tags = []
+        try:
+            tags_ref = s.get_character_attribute(char_id, "tags")
+            if isinstance(tags_ref, dict) and "rid" in tags_ref:
+                tags_model = s.get(tags_ref["rid"])
+                for key, entry in tags_model.items():
+                    if not isinstance(entry, dict) or "rid" not in entry:
+                        continue
+                    try:
+                        tag_info = s.get(entry["rid"])
+                        like = "_like" in key
+                        tags.append({
+                            "key": tag_info.get("key", key),
+                            "desc": tag_info.get("desc", ""),
+                            "like": like,
+                        })
+                    except KeyError:
+                        continue
+        except (KeyError, TypeError):
+            pass
+
+        return {
+            "type": "character",
+            "name": full_name,
+            "species": species.capitalize() if species else "",
+            "gender": gender.capitalize() if gender else "",
+            "desc": desc,
+            "about": about,
+            "tags": tags,
+        }

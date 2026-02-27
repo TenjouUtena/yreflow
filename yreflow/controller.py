@@ -34,6 +34,7 @@ class Controller:
         self.event_bus.subscribe(r"^raw\.message$", self._on_raw_message)
         self.event_bus.subscribe(r"^connection\.closed$", self._on_connection_closed)
         self.event_bus.subscribe(r"^connection\.failed$", self._on_connection_failed)
+        self.event_bus.subscribe(r"^look\.result$", self._on_look_result)
 
     async def start(self) -> None:
         await self.connection.connect()
@@ -56,8 +57,25 @@ class Controller:
         await self.ui.update_watch_list()
 
     async def _on_characters_changed(self, event_name: str, **kw) -> None:
-        # Phase 3: update character tabs
-        pass
+        """Remove tabs for characters no longer under player control."""
+        if not self.connection.player:
+            return
+        try:
+            models = self.store.get(
+                f"core.player.{self.connection.player}.ctrls._value"
+            )
+            current_ids = set()
+            for x in models:
+                try:
+                    current_ids.add(self.store.get(x["rid"])["id"])
+                except KeyError:
+                    continue
+        except KeyError:
+            current_ids = set()
+
+        known = self.ui.get_known_characters()
+        for char_id in known - current_ids:
+            await self.ui.remove_character_tab(char_id)
 
     async def _on_tab_needed(self, event_name: str, character: str, **kw) -> None:
         await self.ui.ensure_character_tab(character)
@@ -70,3 +88,6 @@ class Controller:
 
     async def _on_connection_failed(self, event_name: str, **kw) -> None:
         await self.ui.display_system_text("Could not connect to Wolfery!")
+
+    async def _on_look_result(self, event_name: str, data: dict, **kw) -> None:
+        await self.ui.display_look(data)
