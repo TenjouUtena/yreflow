@@ -35,8 +35,13 @@ class Controller:
         self.event_bus.subscribe(r"^connection\.closed$", self._on_connection_closed)
         self.event_bus.subscribe(r"^connection\.failed$", self._on_connection_failed)
         self.event_bus.subscribe(r"^look\.result$", self._on_look_result)
+        self.event_bus.subscribe(r"^auth\.failed$", self._on_auth_failed)
 
     async def start(self) -> None:
+        await self.connection.connect()
+
+    async def start_with_credentials(self, username: str, password: str) -> None:
+        self.connection.set_credentials(username, password)
         await self.connection.connect()
 
     async def handle_command(self, command: str, character: str) -> CommandResult:
@@ -91,3 +96,6 @@ class Controller:
 
     async def _on_look_result(self, event_name: str, data: dict, **kw) -> None:
         await self.ui.display_look(data)
+
+    async def _on_auth_failed(self, event_name: str, error: str, **kw) -> None:
+        await self.ui.show_login(error=error)

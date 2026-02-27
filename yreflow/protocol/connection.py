@@ -1,10 +1,15 @@
 import json
 import os
 import asyncio
+import hmac
+import hashlib
+import base64
 from datetime import datetime, timedelta
 
 import websockets
 from websockets.asyncio.client import connect
+
+_PEPPER = b"TheStoryStartsHere"
 
 from .state import State
 from .model_store import ModelStore
@@ -22,8 +27,10 @@ class WolferyConnection:
         self.store = store
         self.event_bus = event_bus
 
-        self.token: str = config["token"]
+        self.token: str | None = config.get("token")
         self.default_subscriptions: list[str] = config["default_subscriptions"]
+        self.auth_mode: str = "token" if self.token else "password"
+        self.credentials: dict | None = None
 
         self.wsock = None
         self.state = State.NEW
@@ -42,6 +49,21 @@ class WolferyConnection:
         self.store.add_watch(r"core\.chars\.awake", self._on_watches_change)
         self.store.add_watch(r"core\.player\.\w+\.ctrls\.remove", self._on_tabs_change)
 
+    def set_credentials(self, username: str, password: str) -> None:
+        """Set username/password for password-based auth."""
+        self.auth_mode = "password"
+        self.credentials = {
+            "name": username,
+            "hash": self._compute_hash(password),
+        }
+
+    @staticmethod
+    def _compute_hash(password: str) -> str:
+        """HMAC-SHA256 of password with public pepper, base64-encoded."""
+        return base64.b64encode(
+            hmac.new(_PEPPER, password.strip().encode("utf-8"), hashlib.sha256).digest()
+        ).decode("ascii")
+
     def add_message_wait(self, msg_id: int, function) -> None:
         self.message_waits[msg_id] = {"function": function}
 
@@ -51,6 +73,11 @@ class WolferyConnection:
 
     async def stop_look_at(self, whoami: str):
         return await self.send(f"call.core.char.{whoami}.ctrl.look", {"charid": whoami})
+
+    async def _on_login_success(self, result) -> None:
+        """Called when auth.auth.login succeeds — proceed to getUser."""
+        self.state = State.AUTH
+        await self.send("call.auth.getUser")
 
     # --- Model watches (replace self.ui.* calls) ---
 
@@ -104,12 +131,13 @@ class WolferyConnection:
 
     async def connect(self) -> None:
         uri = "wss://api.wolfery.com/"
+        headers = {}
+        if self.auth_mode == "token" and self.token:
+            headers["Cookie"] = f"wolfery-auth-token={self.token}"
         try:
             async with connect(
                 uri,
-                additional_headers={
-                    "Cookie": f"wolfery-auth-token={self.token}"
-                },
+                additional_headers=headers,
             ) as wsock:
                 await self._on_open(wsock)
                 await self._consumer_handler(wsock)
@@ -150,6 +178,15 @@ class WolferyConnection:
             return
 
         if "error" in j:
+            msg_id = j.get("id")
+            if msg_id in self.message_waits:
+                self.message_waits.pop(msg_id)
+            if self.state == State.LOGIN:
+                error_msg = j["error"].get("message", "Authentication failed")
+                await self.event_bus.publish("auth.failed", error=error_msg)
+                if self.wsock:
+                    await self.wsock.close()
+                return
             await self.event_bus.publish("protocol.error", data=j)
 
         if "result" in j:
@@ -168,7 +205,12 @@ class WolferyConnection:
             if "rid" in j["result"] and "player" in j["result"]["rid"]:
                 self.player = j["result"]["rid"].split(".")[2]
             if "protocol" in j["result"] and self.state == State.AUTH:
-                await self.send("call.auth.getUser")
+                if self.auth_mode == "password" and self.credentials:
+                    self.state = State.LOGIN
+                    msg_id = await self.send("auth.auth.login", self.credentials)
+                    self.add_message_wait(msg_id, self._on_login_success)
+                else:
+                    await self.send("call.auth.getUser")
             if "models" in j["result"]:
                 for m in j["result"]["models"]:
                     await self.store.set(m, j["result"]["models"][m])

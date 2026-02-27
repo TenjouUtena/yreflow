@@ -16,6 +16,7 @@ from .widgets.watch_list import Sidebar
 from .widgets.character_bar import CharacterBar, CharacterButton, AddCharacterButton
 from .screens.character_select import CharacterSelectScreen
 from .screens.look_screen import LookScreen
+from .screens.login_screen import LoginScreen
 from ..formatter import format_message
 
 
@@ -176,13 +177,33 @@ class WolferyApp(App):
 
     async def on_mount(self) -> None:
         if self.controller:
-            self.run_worker(self.controller.start(), exclusive=True, name="websocket")
-        self.set_timer(3.0, self._check_initial_characters)
+            if self.controller.connection.auth_mode == "token":
+                self.run_worker(self.controller.start(), exclusive=True, name="websocket")
+                self.set_timer(3.0, self._check_initial_characters)
+            else:
+                self.push_screen(LoginScreen(), callback=self._on_login_result)
 
     def _check_initial_characters(self) -> None:
         """Show character select if no characters appeared after connect."""
         if not self.character_order:
             self.action_open_character_select()
+
+    def _on_login_result(self, credentials: tuple[str, str] | None) -> None:
+        """Handle login screen dismissal."""
+        if credentials is None:
+            self.exit()
+            return
+        username, password = credentials
+        self.run_worker(
+            self.controller.start_with_credentials(username, password),
+            exclusive=True,
+            name="websocket",
+        )
+        self.set_timer(3.0, self._check_initial_characters)
+
+    async def show_login(self, error: str | None = None) -> None:
+        """Show the login screen, optionally with an error message."""
+        self.push_screen(LoginScreen(error=error), callback=self._on_login_result)
 
     # --- Input handling ---
 

@@ -8,6 +8,22 @@ from .controller import Controller
 from .ui.app import WolferyApp
 
 
+_DEFAULT_SUBSCRIPTIONS = [
+    "subscribe.core.info",
+    "subscribe.tag.info",
+    "subscribe.mail.info",
+    "subscribe.note.info",
+    "subscribe.report.info",
+    "subscribe.support.info",
+    "subscribe.client.web.info",
+    "subscribe.core.nodes",
+    "call.core.getPlayer",
+    "call.core.getRoles",
+    "subscribe.tag.tags",
+    "subscribe.core.chars.awake",
+]
+
+
 def main():
     config_path = "config.toml"
     if len(sys.argv) > 1:
@@ -19,10 +35,13 @@ def main():
         if fallback.exists():
             config_path = str(fallback)
         else:
-            print(f"Config file not found: {config_path}")
-            sys.exit(1)
+            config_path = None
 
-    config = load_config(config_path)
+    if config_path:
+        config = load_config(config_path)
+    else:
+        # No config file — use defaults, will prompt for login
+        config = {"default_subscriptions": _DEFAULT_SUBSCRIPTIONS}
 
     app = WolferyApp()
     controller = Controller(config, app)

@@ -46,6 +46,10 @@ class UIProtocol(Protocol):
         """Display the look modal (room or character)."""
         ...
 
+    async def show_login(self, error: str | None = None) -> None:
+        """Show the login screen, optionally with an error message."""
+        ...
+
     async def log_raw(self, text: str) -> None:
         """Log raw protocol text (debug)."""
         ...
