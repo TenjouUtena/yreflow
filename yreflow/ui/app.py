@@ -217,7 +217,7 @@ class WolferyApp(App):
                 fg = "#333333"
             else:
                 fg = "#cccccc"
-            return f"[{fg} on {focus_color}] {timestamp} [/] "
+            return f"[{fg} on {focus_color}]{timestamp}[/] "
         return f"[dim]{timestamp}[/dim] "
 
     def _format_line(
