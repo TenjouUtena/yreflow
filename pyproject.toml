@@ -1,0 +1,16 @@
+[project]
+name = "yreflow"
+version = "0.1.0"
+description = "Wolfery console client"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=8.0.0",
+    "websockets>=16.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+yreflow = "yreflow.main:main"

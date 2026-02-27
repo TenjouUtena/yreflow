@@ -1,0 +1,39 @@
+"""Abstract UI interface that any frontend must implement.
+
+Uses Protocol (structural subtyping) instead of ABC to avoid metaclass
+conflicts with Textual's App.
+"""
+
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class UIProtocol(Protocol):
+
+    async def display_message(self, message: dict, style: str, character: str) -> None:
+        """Display a game message (say, pose, whisper, ooc, etc.)."""
+        ...
+
+    async def display_system_text(self, text: str) -> None:
+        """Display a system notification."""
+        ...
+
+    async def notify(self, text: str) -> None:
+        """Show a transient notification."""
+        ...
+
+    async def update_room(self) -> None:
+        """Refresh the room display."""
+        ...
+
+    async def ensure_character_tab(self, character: str) -> None:
+        """Ensure a tab/view exists for a character."""
+        ...
+
+    async def update_watch_list(self) -> None:
+        """Refresh the watch list sidebar."""
+        ...
+
+    async def log_raw(self, text: str) -> None:
+        """Log raw protocol text (debug)."""
+        ...
