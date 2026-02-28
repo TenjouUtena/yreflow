@@ -180,6 +180,20 @@ class CommandHandler:
             "function": self.handle_join,
         }
 
+        patterns["lead"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("lead "), lambda cmd: cmd[5:]),
+            ],
+            "function": self.handle_lead,
+        }
+
+        patterns["follow"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("follow "), lambda cmd: cmd[7:]),
+            ],
+            "function": self.handle_follow,
+        }
+
         patterns["look"] = {
             "patterns": [
                 (lambda cmd: cmd.strip() == "look", lambda cmd: None),
@@ -425,6 +439,26 @@ class CommandHandler:
             f"call.core.char.{character}.ctrl.join", {"charId": target_id}
         )
         return CommandResult(notification=f"Joining {name_to_join}...")
+
+    async def handle_lead(self, name_to_lead, character) -> CommandResult:
+        try:
+            target_id = parse_name(self.store, name_to_lead)
+        except NameParseException as e:
+            return CommandResult(success=False, notification=str(e))
+        await self.conn.send(
+            f"call.core.char.{character}.ctrl.lead", {"charId": target_id}
+        )
+        return CommandResult(notification=f"Leading {name_to_lead}...")
+
+    async def handle_follow(self, name_to_follow, character) -> CommandResult:
+        try:
+            target_id = parse_name(self.store, name_to_follow)
+        except NameParseException as e:
+            return CommandResult(success=False, notification=str(e))
+        await self.conn.send(
+            f"call.core.char.{character}.ctrl.follow", {"charId": target_id}
+        )
+        return CommandResult(notification=f"Following {name_to_follow}...")
 
     async def handle_look(self, content, character) -> CommandResult:
         if content is None:

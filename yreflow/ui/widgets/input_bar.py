@@ -27,6 +27,10 @@ class InputBar(Input):
         )
 
     async def _on_key(self, event: Key) -> None:
-        if event.key in _PASSTHROUGH_KEYS:
-            return
+        #if event.key in _PASSTHROUGH_KEYS:
+        # :w
+        #    return
+        if event.key == 'shift+enter':
+            self.insert_text_at_cursor("\n")
+        
         await super()._on_key(event)

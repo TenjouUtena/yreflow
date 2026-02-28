@@ -428,6 +428,15 @@ class WolferyApp(App):
         if style == "roll":
             return f"{ts}[bold cyan]{sender}[/bold cyan] {msg}"
 
+        if style == "leadRequest":
+            return f"{ts}[bold yellow]>> [bold cyan]{sender}[/bold cyan] wants to lead {target_name}.[/bold yellow]"
+
+        if style == "followRequest":
+            return f"{ts}[bold yellow]>> [bold cyan]{sender}[/bold cyan] wants to follow {target_name}.[/bold yellow]"
+
+        if style == "controlRequest":
+            return f"{ts}[bold yellow]>> [bold cyan]{sender}[/bold cyan] requests control of {target_name}.[/bold yellow]"
+
         # Fallback
         return f"{ts}[bold cyan]{sender}[/bold cyan] {msg}"
 
