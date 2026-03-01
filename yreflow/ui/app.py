@@ -216,6 +216,9 @@ class WolferyApp(App):
         if not command:
             return
 
+        input_bar = self.query_one("#input-bar", InputBar)
+        input_bar.push_history(command)
+
         if self.controller and self.active_character:
             result = await self.controller.handle_command(command, self.active_character)
             if result and result.look_data:
@@ -243,6 +246,10 @@ class WolferyApp(App):
         char_bar.set_active(character)
         self.unread_counts[character] = 0
         char_bar.update_unread(character, 0)
+
+        # Switch input history to this character
+        input_bar = self.query_one("#input-bar", InputBar)
+        input_bar.set_active_character(character)
 
         # Rebuild sidebar for this character's room
         self._rebuild_sidebar()
