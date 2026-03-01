@@ -17,6 +17,7 @@ from .widgets.character_bar import CharacterBar, CharacterButton, AddCharacterBu
 from .screens.character_select import CharacterSelectScreen
 from .screens.look_screen import LookScreen
 from .screens.login_screen import LoginScreen
+from .screens.profile_select import ProfileSelectScreen
 from ..formatter import format_message
 
 
@@ -198,11 +199,18 @@ class WolferyApp(App):
             return
         username, password = credentials
         self.run_worker(
-            self.controller.start_with_credentials(username, password),
+            self._login_and_connect(username, password),
             exclusive=True,
             name="websocket",
         )
         self.set_timer(3.0, self._check_initial_characters)
+
+    async def _login_and_connect(self, username: str, password: str) -> None:
+        """Obtain token via HTTP, then connect. Falls back to login screen on failure."""
+        try:
+            await self.controller.start_with_credentials(username, password)
+        except ValueError as e:
+            await self.show_login(error=str(e))
 
     async def show_login(self, error: str | None = None) -> None:
         """Show the login screen, optionally with an error message."""
@@ -223,8 +231,23 @@ class WolferyApp(App):
             result = await self.controller.handle_command(command, self.active_character)
             if result and result.look_data:
                 self.push_screen(LookScreen(result.look_data))
+            if result and result.open_profile_select:
+                self.push_screen(
+                    ProfileSelectScreen(
+                        self.controller.store,
+                        self.controller.connection,
+                        self.active_character,
+                    ),
+                    callback=self._on_profile_selected,
+                )
+            if result and result.display_text:
+                await self.display_system_text(result.display_text)
             if result and result.notification:
                 await self.notify(result.notification)
+
+    def _on_profile_selected(self, profile_name: str | None) -> None:
+        if profile_name:
+            self.run_worker(self.notify(f"Morphing into {profile_name}..."))
 
     # --- Character switching ---
 

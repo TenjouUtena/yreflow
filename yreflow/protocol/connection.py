@@ -202,6 +202,11 @@ class WolferyConnection:
                 if self.wsock:
                     await self.wsock.close()
                 return
+            if self.state == State.AUTH and self.auth_mode == "token":
+                await self.event_bus.publish("auth.token_expired")
+                if self.wsock:
+                    await self.wsock.close()
+                return
             await self.event_bus.publish("protocol.error", data=j)
 
         if "result" in j:

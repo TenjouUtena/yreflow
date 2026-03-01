@@ -1,5 +1,5 @@
 # Samples
-Samples/
+/Samples/
 /logs/
 
 # Python-generated files
@@ -14,3 +14,4 @@ wheels/
 .venv
 
 .claude/
+test_http_auth.py

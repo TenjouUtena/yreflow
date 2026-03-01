@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING
 from .protocol.events import EventBus
 from .protocol.model_store import ModelStore
 from .protocol.connection import WolferyConnection
+from .protocol.http_auth import obtain_token
 from .commands.handler import CommandHandler, CommandResult
+from .config import save_token, clear_token
 
 if TYPE_CHECKING:
     from .ui.base import UIProtocol
@@ -36,12 +38,17 @@ class Controller:
         self.event_bus.subscribe(r"^connection\.failed$", self._on_connection_failed)
         self.event_bus.subscribe(r"^look\.result$", self._on_look_result)
         self.event_bus.subscribe(r"^auth\.failed$", self._on_auth_failed)
+        self.event_bus.subscribe(r"^auth\.token_expired$", self._on_token_expired)
 
     async def start(self) -> None:
         await self.connection.connect()
 
     async def start_with_credentials(self, username: str, password: str) -> None:
-        self.connection.set_credentials(username, password)
+        """Obtain a token via HTTP, save it, then connect with it."""
+        token = await obtain_token(username, password)
+        save_token(token)
+        self.connection.token = token
+        self.connection.auth_mode = "token"
         await self.connection.connect()
 
     async def handle_command(self, command: str, character: str) -> CommandResult:
@@ -99,3 +106,9 @@ class Controller:
 
     async def _on_auth_failed(self, event_name: str, error: str, **kw) -> None:
         await self.ui.show_login(error=error)
+
+    async def _on_token_expired(self, event_name: str, **kw) -> None:
+        clear_token()
+        self.connection.token = None
+        self.connection.auth_mode = "password"
+        await self.ui.show_login(error="Session expired. Please log in again.")

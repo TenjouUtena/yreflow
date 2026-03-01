@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .name_resolver import parse_name, NameParseException
@@ -22,6 +23,8 @@ class CommandResult:
     success: bool = True
     notification: str | None = None
     look_data: dict | None = None
+    open_profile_select: bool = False
+    display_text: str | None = None
 
 
 class CommandHandler:
@@ -194,6 +197,15 @@ class CommandHandler:
             "function": self.handle_follow,
         }
 
+        patterns["profile"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() in ("profile", "morph"), lambda cmd: ""),
+                (lambda cmd: cmd.startswith("profile "), lambda cmd: cmd[8:]),
+                (lambda cmd: cmd.startswith("morph "), lambda cmd: cmd[6:]),
+            ],
+            "function": self.handle_profile,
+        }
+
         patterns["look"] = {
             "patterns": [
                 (lambda cmd: cmd.strip() == "look", lambda cmd: None),
@@ -202,6 +214,21 @@ class CommandHandler:
                 (lambda cmd: cmd.startswith("l "), lambda cmd: cmd[2:]),
             ],
             "function": self.handle_look,
+        }
+
+        patterns["laston"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("laston "), lambda cmd: cmd[7:]),
+            ],
+            "function": self.handle_laston,
+        }
+
+        patterns["wa"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "wa", lambda cmd: None),
+                (lambda cmd: cmd.strip() == "whereat", lambda cmd: None),
+            ],
+            "function": self.handle_wa,
         }
 
         for style in patterns:
@@ -459,6 +486,148 @@ class CommandHandler:
             f"call.core.char.{character}.ctrl.follow", {"charId": target_id}
         )
         return CommandResult(notification=f"Following {name_to_follow}...")
+
+    async def handle_profile(self, profile_name, character) -> CommandResult:
+        if not profile_name:
+            return CommandResult(open_profile_select=True)
+        # Look up profile by keyword first, then by name
+        try:
+            profiles = self.store.get(
+                f"core.char.{character}.profiles._value"
+            )
+        except KeyError:
+            return CommandResult(
+                success=False, notification="No profiles found."
+            )
+        search = profile_name.strip().lower()
+        # Pass 1: match keyword
+        for entry in profiles:
+            try:
+                profile = self.store.get(entry["rid"])
+                if profile.get("key", "").lower() == search:
+                    return await self._switch_profile(entry, profile, character)
+            except (KeyError, AttributeError):
+                continue
+        # Pass 2: match name
+        for entry in profiles:
+            try:
+                profile = self.store.get(entry["rid"])
+                if profile.get("name", "").lower() == search:
+                    return await self._switch_profile(entry, profile, character)
+            except (KeyError, AttributeError):
+                continue
+        return CommandResult(
+            success=False,
+            notification=f"Profile not found: {profile_name}",
+        )
+
+    async def _switch_profile(self, entry, profile, character) -> CommandResult:
+        profile_id = entry["rid"].split(".")[-1]
+        await self.conn.send(
+            f"call.core.char.{character}.ctrl.useProfile",
+            {"profileId": profile_id, "safe": True},
+        )
+        return CommandResult(
+            notification=f"Morphing into {profile.get('name', '?')}..."
+        )
+
+    async def handle_wa(self, content, character) -> CommandResult:
+        """Handle whereat (wa) command -- show area population tree."""
+        try:
+            room_pointer = self.store.get(
+                f"core.char.{character}.owned.inRoom"
+            )["rid"]
+        except KeyError:
+            return CommandResult(
+                success=False, notification="Could not determine current room."
+            )
+        try:
+            room = self.store.get(room_pointer)
+            area_path = room["details"]["area"]["rid"]
+        except KeyError:
+            return CommandResult(
+                success=False, notification=f"Could not determine current area. {room}"
+            )
+
+        # Walk up to top-level area
+        while True:
+            try:
+                area = self.store.get(area_path)
+                parent = area.get("parent") or area.get("details", {}).get("parent")
+                if isinstance(parent, dict) and "rid" in parent:
+                    area_path = parent["rid"]
+                else:
+                    break
+            except KeyError:
+                break
+
+        area_id = ".".join(area_path.split(".")[:3])
+        output = self._build_wa_output(area_id, level=0)
+        if not output:
+            return CommandResult(notification="No occupied areas found.")
+        return CommandResult(display_text=output.rstrip("\n"))
+
+    def _build_wa_output(self, base: str, level: int = 0) -> str:
+        """Recursively build the whereat text output."""
+        try:
+            area = self.store.get(base)
+            if len(area) == 1:
+                try:
+                    area = self.store.get(base + ".child")
+                except KeyError:
+                    pass
+        except KeyError:
+            try:
+                area = self.store.get(base + ".child")
+            except KeyError:
+                return ""
+
+        if "details" in area:
+            children = area.get("children", {})
+            area = area["details"]
+        else:
+            children = {}
+
+        result = ""
+        pop = area.get("pop", 0)
+        name = area.get("name", "")
+        if name and pop:
+            indent = "  " * level
+            result += f"{indent}{name} [bold]{pop}[/bold]\n"
+
+        for key in children:
+            try:
+                child_rid = children[key]["rid"]
+                child_base = ".".join(child_rid.split(".")[:3])
+                result += self._build_wa_output(child_base, level + 1)
+            except (KeyError, TypeError):
+                continue
+
+        return result
+
+    async def handle_laston(self, name_to_check, character) -> CommandResult:
+        try:
+            target_id = parse_name(self.store, name_to_check, awake=False)
+        except NameParseException as e:
+            return CommandResult(success=False, notification=str(e))
+        try:
+            char_data = self.store.get(f"core.char.{target_id}")
+        except KeyError:
+            return CommandResult(success=False, notification="Character data not found.")
+        if "lastAwake" not in char_data:
+            return CommandResult(
+                success=False,
+                notification=f"No last online info for {name_to_check}",
+            )
+        last_awake = datetime.fromtimestamp(
+            char_data["lastAwake"] / 1000.0
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        char_name = char_data.get("name", "?")
+        if "surname" in char_data:
+            char_name += f" {char_data['surname']}"
+        return CommandResult(
+            display_text=f"{char_name} was last online {last_awake}"
+        )
 
     async def handle_look(self, content, character) -> CommandResult:
         if content is None:

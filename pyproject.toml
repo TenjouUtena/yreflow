@@ -1,11 +1,16 @@
 [project]
 name = "yreflow"
 version = "0.1.0"
+authors = [
+    { name="Kredden", email="kredden@proactiveapathy.com" }
+]
+readme = "README.md"
 description = "Wolfery console client"
 requires-python = ">=3.11"
 dependencies = [
     "textual>=8.0.0",
     "websockets>=16.0",
+    "httpx>=0.27",
 ]
 
 [build-system]

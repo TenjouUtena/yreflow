@@ -14,3 +14,36 @@ def load_config() -> dict:
         with open(CONFIG_PATH, "rb") as f:
             return tomllib.load(f)
     return {}
+
+
+def save_token(token: str) -> None:
+    """Save auth token to config file, preserving other settings."""
+    config = load_config()
+    config["token"] = token
+    _write_config(config)
+
+
+def clear_token() -> None:
+    """Remove auth token from config file, preserving other settings."""
+    config = load_config()
+    config.pop("token", None)
+    _write_config(config)
+
+
+def _write_config(config: dict) -> None:
+    """Write config dict as TOML to the config file."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for key, value in config.items():
+        if isinstance(value, str):
+            # Escape backslashes and quotes for TOML string
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            lines.append(f'{key} = "{escaped}"')
+        elif isinstance(value, bool):
+            lines.append(f"{key} = {'true' if value else 'false'}")
+        elif isinstance(value, (int, float)):
+            lines.append(f"{key} = {value}")
+        elif isinstance(value, list):
+            items = ", ".join(f'"{v}"' for v in value)
+            lines.append(f"{key} = [{items}]")
+    CONFIG_PATH.write_text("\n".join(lines) + "\n")
