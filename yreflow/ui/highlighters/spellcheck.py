@@ -89,9 +89,7 @@ class SpellCheckHighlighter(Highlighter):
                 continue
             start = match.start() + offset
             end = match.end() + offset
-
-            # DOn't do the last word.
-            if not end == len(prose):
+            if end != len(plain):
                 word_spans.append((word.lower(), start, end))
 
         if not word_spans:
