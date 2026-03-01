@@ -1,5 +1,4 @@
 import json
-import os
 import asyncio
 import hmac
 import hashlib
@@ -307,9 +306,12 @@ class WolferyConnection:
         return self.id
 
     def log_to_file(self, message: str) -> None:
-        os.makedirs("logs", exist_ok=True)
+        from ..config import get_log_dir
+
+        log_dir = get_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
         current_date = datetime.now().strftime("%Y-%m-%d")
-        log_file = f"logs/{current_date}.log"
+        log_file = log_dir / f"{current_date}.log"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open(log_file, "a") as f:
             f.write(f"[{timestamp}] {message}\n")

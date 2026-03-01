@@ -1,0 +1,39 @@
+name: Nightly Build
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC daily
+  workflow_dispatch: # allow manual trigger
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: development
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set dev version
+        run: |
+          DATE=$(date +%Y%m%d)
+          BASE=$(python -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          ")
+          DEV_VERSION="${BASE}.dev${DATE}"
+          sed -i "s/^version = \".*\"/version = \"${DEV_VERSION}\"/" pyproject.toml
+          echo "Publishing version ${DEV_VERSION}"
+
+      - name: Build
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}

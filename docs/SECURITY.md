@@ -42,8 +42,29 @@ No data is sent over unencrypted connections.
 
 When a token expires, yreflow automatically clears it from the config file and shows the login screen again. No manual intervention is needed.
 
+## Log Files
+
+yreflow logs all WebSocket traffic (incoming and outgoing messages) to daily log files. These logs may contain private content such as whispers, pages, and roleplay messages.
+
+Default location:
+
+```
+~/.config/yreflow/logs/
+```
+
+One file per day, named `YYYY-MM-DD.log`.
+
+To change the log directory, set `log_dir` in your config file:
+
+```toml
+log_dir = "/path/to/your/logs"
+```
+
+Treat these files as sensitive. They are not encrypted and anyone with read access to the directory can view them.
+
+The intention is to discontinue this use after alpha phase.
+
 ## What Is Not Stored
 
 - Passwords (never written to disk)
-- Chat logs or message history
 - Other users' credentials or personal data

@@ -3,6 +3,7 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "yreflow"
 CONFIG_PATH = CONFIG_DIR / "config.toml"
+DEFAULT_LOG_DIR = CONFIG_DIR / "logs"
 
 
 def load_config() -> dict:
@@ -28,6 +29,15 @@ def save_preference(key: str, value) -> None:
     config = load_config()
     config[key] = value
     _write_config(config)
+
+
+def get_log_dir() -> Path:
+    """Return the log directory from config, or the default."""
+    config = load_config()
+    custom = config.get("log_dir")
+    if custom:
+        return Path(custom).expanduser()
+    return DEFAULT_LOG_DIR
 
 
 def clear_token() -> None:
