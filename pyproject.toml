@@ -11,6 +11,7 @@ dependencies = [
     "textual>=8.0.0",
     "websockets>=16.0",
     "httpx>=0.27",
+    "pyspellchecker>=0.8",
 ]
 
 [build-system]

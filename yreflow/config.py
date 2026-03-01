@@ -23,6 +23,13 @@ def save_token(token: str) -> None:
     _write_config(config)
 
 
+def save_preference(key: str, value) -> None:
+    """Save a single preference to config file, preserving other settings."""
+    config = load_config()
+    config[key] = value
+    _write_config(config)
+
+
 def clear_token() -> None:
     """Remove auth token from config file, preserving other settings."""
     config = load_config()

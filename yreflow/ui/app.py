@@ -18,6 +18,7 @@ from .screens.character_select import CharacterSelectScreen
 from .screens.look_screen import LookScreen
 from .screens.login_screen import LoginScreen
 from .screens.profile_select import ProfileSelectScreen
+from ..config import load_config, save_preference
 from ..formatter import format_message
 
 
@@ -102,6 +103,8 @@ class WolferyCommands(Provider):
         ("Previous character", "prev_character", "Switch to the previous character tab (Ctrl+P)"),
         ("Open character select", "open_character_select", "Awaken or switch to a character (Ctrl+F)"),
         ("Quit", "quit", "Exit yreflow (Ctrl+C)"),
+        ("Toggle spellcheck", "toggle_spellcheck", "Inline spellcheck highlighting (Ctrl+S)"),
+        ("Toggle markup preview", "toggle_markup_preview", "Wolfery markup preview (Ctrl+T)"),
     ]
 
     async def search(self, query: str) -> Hits:
@@ -159,6 +162,8 @@ class WolferyApp(App):
         Binding("ctrl+n", "next_character", "Next char", priority=True),
         Binding("ctrl+f", "open_character_select", "New char", priority=True),
         Binding("ctrl+grave_accent", "command_palette", "Commands", priority=True),
+        Binding("ctrl+s", "toggle_spellcheck", "Spellcheck", priority=True),
+        Binding("ctrl+t", "toggle_markup_preview", "Markup", priority=True),
     ]
 
     def __init__(self, controller=None, **kwargs):
@@ -180,6 +185,14 @@ class WolferyApp(App):
         yield Footer()
 
     async def on_mount(self) -> None:
+        # Restore highlighter preferences
+        config = load_config()
+        input_bar = self.query_one("#input-bar", InputBar)
+        if config.get("spellcheck_enabled", False):
+            input_bar.set_highlighter_state("spellcheck", True)
+        if config.get("markup_preview_enabled", False):
+            input_bar.set_highlighter_state("markup", True)
+
         if self.controller:
             if self.controller.connection.auth_mode == "token":
                 self.run_worker(self.controller.start(), exclusive=True, name="websocket")
@@ -321,6 +334,20 @@ class WolferyApp(App):
             )
         )
 
+    def action_toggle_spellcheck(self) -> None:
+        input_bar = self.query_one("#input-bar", InputBar)
+        enabled = input_bar.toggle_spellcheck()
+        save_preference("spellcheck_enabled", enabled)
+        input_bar.refresh()
+        self.notify(f"Spellcheck {'on' if enabled else 'off'}")
+
+    def action_toggle_markup_preview(self) -> None:
+        input_bar = self.query_one("#input-bar", InputBar)
+        enabled = input_bar.toggle_markup_preview()
+        save_preference("markup_preview_enabled", enabled)
+        input_bar.refresh()
+        self.notify(f"Markup preview {'on' if enabled else 'off'}")
+
     # --- Sidebar ---
 
     def _rebuild_sidebar(self) -> None:
@@ -332,6 +359,29 @@ class WolferyApp(App):
             self.controller.connection.player,
             self.active_character,
         )
+        self._update_spellcheck_dictionary()
+
+    def _update_spellcheck_dictionary(self) -> None:
+        """Feed character names into the spellcheck custom dictionary."""
+        if not self.controller:
+            return
+        store = self.controller.store
+        words: set[str] = set()
+        try:
+            chars = store.get("core.char")
+            for key in chars:
+                name = store.get_character_attribute(key, "name")
+                surname = store.get_character_attribute(key, "surname")
+                if name:
+                    for part in name.split():
+                        words.add(part)
+                if surname:
+                    for part in surname.split():
+                        words.add(part)
+        except (KeyError, AttributeError):
+            pass
+        input_bar = self.query_one("#input-bar", InputBar)
+        input_bar.update_spellcheck_words(words)
 
     # --- Focus color ---
 

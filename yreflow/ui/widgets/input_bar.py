@@ -3,9 +3,12 @@
 from textual.events import Key
 from textual.widgets import Input
 
+from ..highlighters import CompositeHighlighter, MarkupPreviewHighlighter, SpellCheckHighlighter
+
 # Keys that should pass through to app-level bindings even when input is focused.
 _PASSTHROUGH_KEYS = {
     "ctrl+u", "ctrl+w", "ctrl+n", "ctrl+p", "ctrl+f", "ctrl+grave_accent",
+    "ctrl+s", "ctrl+t",
 }
 
 _MAX_HISTORY = 20
@@ -23,8 +26,15 @@ class InputBar(Input):
     """
 
     def __init__(self, **kwargs):
+        self._composite = CompositeHighlighter()
+        self._spell_highlighter = SpellCheckHighlighter()
+        self._markup_highlighter = MarkupPreviewHighlighter()
+        self._composite.register("markup", self._markup_highlighter)
+        self._composite.register("spellcheck", self._spell_highlighter)
+
         super().__init__(
             placeholder="Type a command (say, :pose, >ooc, w Name=msg)...",
+            highlighter=self._composite,
             **kwargs,
         )
         self._histories: dict[str, list[str]] = {}
@@ -86,3 +96,25 @@ class InputBar(Input):
             self.insert_text_at_cursor("\n")
 
         await super()._on_key(event)
+
+    # --- Highlighter controls ---
+
+    def toggle_spellcheck(self) -> bool:
+        """Toggle spellcheck on/off. Returns new state."""
+        new = not self._composite.is_enabled("spellcheck")
+        self._composite.set_enabled("spellcheck", new)
+        return new
+
+    def toggle_markup_preview(self) -> bool:
+        """Toggle markup preview on/off. Returns new state."""
+        new = not self._composite.is_enabled("markup")
+        self._composite.set_enabled("markup", new)
+        return new
+
+    def set_highlighter_state(self, name: str, enabled: bool) -> None:
+        """Set a named highlighter's state (used when restoring config)."""
+        self._composite.set_enabled(name, enabled)
+
+    def update_spellcheck_words(self, words: set[str]) -> None:
+        """Feed custom words (character names, etc.) to the spellchecker."""
+        self._spell_highlighter.update_custom_words(words)
