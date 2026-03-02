@@ -367,19 +367,32 @@ class CommandHandler:
         return CommandResult(notification="Teleporting home...")
 
     async def handle_teleport(self, location, character) -> CommandResult:
-        try:
-            nodes = self.store.get("core.node")
-        except KeyError:
-            return CommandResult(
-                success=False, notification="Cannot teleport: no nodes found."
-            )
         location_key = location.strip().lower()
         node_id = None
-        for node_key in nodes:
-            node_data = nodes[node_key]
-            if "key" in node_data and node_data["key"].lower() == location_key:
-                node_id = node_data["id"]
-                break
+
+        # Try character-specific nodes first
+        try:
+            char_node_refs = self.store.get(f"core.char.{character}.nodes._value")
+            for ref in char_node_refs:
+                node_data = self.store.get(ref["rid"])
+                if "key" in node_data and node_data["key"].lower() == location_key:
+                    node_id = node_data["id"]
+                    break
+        except KeyError:
+            pass
+
+        # Fall back to global nodes
+        if not node_id:
+            try:
+                nodes = self.store.get("core.node")
+                for node_key in nodes:
+                    node_data = nodes[node_key]
+                    if "key" in node_data and node_data["key"].lower() == location_key:
+                        node_id = node_data["id"]
+                        break
+            except KeyError:
+                pass
+
         if not node_id:
             return CommandResult(
                 success=False,
