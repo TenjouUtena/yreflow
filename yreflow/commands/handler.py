@@ -642,7 +642,7 @@ class CommandHandler:
         return await self._look_character(content, character)
     
     async def handle_lookup(self, content, character) -> CommandResult:
-        msg_id = await self.conn.send(f"core.char.{character}.lookupChars",
+        msg_id = await self.conn.send(f"call.core.player.{self.conn.player}.lookupChars",
                              {"extended": True,
                               "name": content})
         self.conn.add_message_wait(
@@ -650,13 +650,13 @@ class CommandHandler:
             lambda _result: self._lookup_result(_result)
         )
 
-    def _lookup_result(self, payload) -> CommandResult:
-        output += f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
+    async def _lookup_result(self, payload) -> None:
+        output = f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
         for char in payload.get("chars",[]):
             #output lines
             surname_len = 29 - (len(char['name']) + len(char['surname']))
             output += f"{char['name']} {char['surname']}{' '*surname_len}{char['gender']:<10}{char['species']:<20}{char['lastAwake']}"
-        return CommandResult(display_text=output)
+        await self.conn.event_bus.publish("system.text", text=output)
 
 
     def _look_room(self, character: str) -> CommandResult:
