@@ -42,7 +42,8 @@ class Controller:
         self.event_bus.subscribe(r"^system\.text$", self._on_system_text)
 
         # Rebuild sidebar when any character's LFRP status changes
-        self.store.add_watch(r"^core\.char\.[^.]+$", self._on_char_rp_changed)
+        self.store.add_watch(r"^core\.char\.[^.]+\.lfrp", self._on_char_changed)
+        self.store.add_watch(r"^core\.char\.[^.]+\.idle", self._on_char_changed)
 
     async def start(self) -> None:
         await self.connection.connect()
@@ -114,9 +115,8 @@ class Controller:
     async def _on_system_text(self, event_name: str, text: str, **kw) -> None:
         await self.ui.display_system_text(text)
 
-    async def _on_char_rp_changed(self, path: str, payload) -> None:
-        if isinstance(payload, dict) and "rp" in payload:
-            await self.ui.update_watch_list()
+    async def _on_char_changed(self, path: str, payload) -> None:
+        await self.ui.update_watch_list()
 
     async def _on_token_expired(self, event_name: str, **kw) -> None:
         clear_token()

@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 class CharacterOption(Static):
     """A single character option in the select screen."""
 
+    can_focus = True
+
     DEFAULT_CSS = """
     CharacterOption {
         height: auto;
@@ -27,6 +29,9 @@ class CharacterOption(Static):
     }
     CharacterOption:hover {
         background: $accent 30%;
+    }
+    CharacterOption:focus {
+        background: $accent 50%;
     }
     """
 
@@ -41,6 +46,10 @@ class CharacterOption(Static):
 
     def on_click(self) -> None:
         self.post_message(self.Selected(self.character_id))
+
+    def on_key(self, event) -> None:
+        if event.key in ("enter", "space"):
+            self.post_message(self.Selected(self.character_id))
 
 
 class CharacterSelectScreen(ModalScreen):
@@ -115,11 +124,14 @@ class CharacterSelectScreen(ModalScreen):
                     display += " [green](awake)[/green]"
                 else:
                     display += " [dim](sleeping)[/dim]"
-                await char_list.mount(
-                    CharacterOption(char_id, display, id=f"charopt-{char_id}")
-                )
+                option = CharacterOption(char_id, display, id=f"charopt-{char_id}")
+                await char_list.mount(option)
             except (KeyError, AttributeError):
                 continue
+
+        first = self.query("CharacterOption").first(CharacterOption)
+        if first:
+            first.focus()
 
     async def on_character_option_selected(
         self, event: CharacterOption.Selected

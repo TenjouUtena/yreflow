@@ -54,7 +54,7 @@ def _format_expanded(store: ModelStore, char_id: str) -> str:
     color = _idle_style(idle)
     display_name = f"{name} {surname}".strip()
     if store.get_character_attribute(char_id, "rp") == "lfrp":
-        display_name = f"[bold]{display_name}[/bold]"
+        display_name = f"[italic]{display_name}[/italic]"
     line = f"[{color}]{display_name}[/{color}]"
 
     details = []
