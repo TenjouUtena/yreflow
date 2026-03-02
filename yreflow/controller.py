@@ -39,6 +39,7 @@ class Controller:
         self.event_bus.subscribe(r"^look\.result$", self._on_look_result)
         self.event_bus.subscribe(r"^auth\.failed$", self._on_auth_failed)
         self.event_bus.subscribe(r"^auth\.token_expired$", self._on_token_expired)
+        self.event_bus.subscribe(r"^system\.text$", self._on_system_text)
 
     async def start(self) -> None:
         await self.connection.connect()
@@ -106,6 +107,9 @@ class Controller:
 
     async def _on_auth_failed(self, event_name: str, error: str, **kw) -> None:
         await self.ui.show_login(error=error)
+
+    async def _on_system_text(self, event_name: str, text: str, **kw) -> None:
+        await self.ui.display_system_text(text)
 
     async def _on_token_expired(self, event_name: str, **kw) -> None:
         clear_token()
