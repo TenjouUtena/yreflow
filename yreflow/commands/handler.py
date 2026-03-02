@@ -231,6 +231,13 @@ class CommandHandler:
             "function": self.handle_wa,
         }
 
+        patterns["lookup"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("lookup "), lambda cmd: cmd[7:])
+            ],
+            "function": self.handle_lookup
+        }
+
         for style in patterns:
             for matcher, extractor in patterns[style]["patterns"]:
                 if matcher(command_text):
@@ -633,6 +640,24 @@ class CommandHandler:
         if content is None:
             return self._look_room(character)
         return await self._look_character(content, character)
+    
+    async def handle_lookup(self, content, character) -> CommandResult:
+        msg_id = await self.conn.send(f"core.char.{character}.lookupChars",
+                             {"extended": True,
+                              "name": content})
+        self.conn.add_message_wait(
+            msg_id,
+            lambda _result: self._lookup_result(_result)
+        )
+
+    def _lookup_result(self, payload) -> CommandResult:
+        output += f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
+        for char in payload.get("chars",[]):
+            #output lines
+            surname_len = 29 - (len(char['name']) + len(char['surname']))
+            output += f"{char['name']} {char['surname']}{' '*surname_len}{char['gender']:<10}{char['species']:<20}{char['lastAwake']}"
+        return CommandResult(display_text=output)
+
 
     def _look_room(self, character: str) -> CommandResult:
         """Gather room data from the store and return it for display."""
