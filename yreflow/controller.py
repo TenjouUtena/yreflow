@@ -41,7 +41,7 @@ class Controller:
         self.event_bus.subscribe(r"^auth\.token_expired$", self._on_token_expired)
         self.event_bus.subscribe(r"^system\.text$", self._on_system_text)
 
-        # Rebuild sidebar when any character's LFRP status changes
+        # Rebuild sidebar when any character's LFRP or idle status changes
         self.store.add_watch(r"^core\.char\.[^.]+\.lfrp", self._on_char_changed)
         self.store.add_watch(r"^core\.char\.[^.]+\.idle", self._on_char_changed)
 

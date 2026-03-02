@@ -50,6 +50,16 @@ class CharacterOption(Static):
     def on_key(self, event) -> None:
         if event.key in ("enter", "space"):
             self.post_message(self.Selected(self.character_id))
+        elif event.key in ("up", "down"):
+            options = list(self.screen.query("CharacterOption"))
+            idx = options.index(self)
+            if event.key == "up" and idx > 0:
+                options[idx - 1].focus()
+                options[idx - 1].scroll_visible()
+            elif event.key == "down" and idx < len(options) - 1:
+                options[idx + 1].focus()
+                options[idx + 1].scroll_visible()
+            event.stop()
 
 
 class CharacterSelectScreen(ModalScreen):
