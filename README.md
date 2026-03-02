@@ -4,6 +4,9 @@ A console client for [Wolfery](https://wolfery.com), built with [Textual](https:
 
 Wolfery is a text-based roleplaying platform. yreflow gives you a terminal UI for connecting to it -- character selection, room navigation, chat commands, spellcheck, and Wolfery markup preview.
 
+![Screenshot](docs/yreflow.png)
+
+
 ## Install
 
 Requires Python 3.11+.
