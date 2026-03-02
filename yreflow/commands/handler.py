@@ -238,6 +238,21 @@ class CommandHandler:
             "function": self.handle_lookup
         }
 
+        patterns["stop_lfrp"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "stop lfrp", lambda cmd: ""),
+            ],
+            "function": self.handle_stop_lfrp,
+        }
+
+        patterns["lfrp"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "lfrp", lambda cmd: ""),
+                (lambda cmd: cmd.startswith("lfrp "), lambda cmd: cmd[5:]),
+            ],
+            "function": self.handle_lfrp,
+        }
+
         for style in patterns:
             for matcher, extractor in patterns[style]["patterns"]:
                 if matcher(command_text):
@@ -649,6 +664,23 @@ class CommandHandler:
             msg_id,
             lambda _result: self._lookup_result(_result)
         )
+
+    async def handle_lfrp(self, content: str, character: str) -> CommandResult:
+        await self.conn.send(
+            f"call.core.player.{self.conn.player}.setCharSettings",
+            {"charId": character, "lfrpDesc": content},
+        )
+        await self.conn.send(
+            f"call.core.char.{character}.ctrl.set", {"rp": "lfrp"}
+        )
+        note = f"Looking for RP: {content}" if content else "Now looking for RP."
+        return CommandResult(display_text=note)
+
+    async def handle_stop_lfrp(self, content: str, character: str) -> CommandResult:
+        await self.conn.send(
+            f"call.core.char.{character}.ctrl.set", {"rp": ""}
+        )
+        return CommandResult(display_text="No longer looking for RP.")
 
     async def _lookup_result(self, payload) -> None:
         output = f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
