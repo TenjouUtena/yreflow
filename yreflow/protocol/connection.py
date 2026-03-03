@@ -246,6 +246,14 @@ class WolferyConnection:
             handled = False
 
             if evt.split(".")[-1] in ("add", "remove"):
+                if "models" in j["data"]:
+                    for m in j["data"]["models"]:
+                        await self.store.set(m, j["data"]["models"][m])
+                if "collections" in j["data"]:
+                    for c in j["data"]["collections"]:
+                        await self.store.set(
+                            c, j["data"]["collections"][c], collection=True
+                        )
                 index = j["data"]["idx"]
                 value = j["data"].get("value", "")
                 await self.store.list_operation(evt, index, value)
