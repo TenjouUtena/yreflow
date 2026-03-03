@@ -106,6 +106,7 @@ class WolferyConnection:
             for rid in payload:
                 character = rid["rid"].split(".")[2]
                 await self.event_bus.publish("character.tab.needed", character=character)
+                await self.send(f"subscribe.core.char.{character}.nodes")
                 f = await self.send(
                     "call.log.events.get",
                     {"charId": character, "startTime": timestamp},
@@ -117,6 +118,7 @@ class WolferyConnection:
         elif path.endswith("ctrls.add") and isinstance(payload, dict) and "rid" in payload:
             character = payload["rid"].split(".")[2]
             await self.event_bus.publish("character.tab.needed", character=character)
+            await self.send(f"subscribe.core.char.{character}.nodes")
 
     async def _process_backlog(self, character: str, backlog) -> None:
         for e in backlog.get("events", []):
@@ -244,6 +246,14 @@ class WolferyConnection:
             handled = False
 
             if evt.split(".")[-1] in ("add", "remove"):
+                if "models" in j["data"]:
+                    for m in j["data"]["models"]:
+                        await self.store.set(m, j["data"]["models"][m])
+                if "collections" in j["data"]:
+                    for c in j["data"]["collections"]:
+                        await self.store.set(
+                            c, j["data"]["collections"][c], collection=True
+                        )
                 index = j["data"]["idx"]
                 value = j["data"].get("value", "")
                 await self.store.list_operation(evt, index, value)

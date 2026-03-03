@@ -37,6 +37,8 @@ def _format_compact(store: ModelStore, char_id: str) -> str:
     idle = store.get_character_attribute(char_id, "idle")
     color = _idle_style(idle)
     display_name = f"{name} {surname}".strip()
+    if store.get_character_attribute(char_id, "rp") == "lfrp":
+        display_name = f"[italic]{display_name}[/italic]"
     return f"[{color}]{display_name}[/{color}]"
 
 
@@ -51,6 +53,8 @@ def _format_expanded(store: ModelStore, char_id: str) -> str:
 
     color = _idle_style(idle)
     display_name = f"{name} {surname}".strip()
+    if store.get_character_attribute(char_id, "rp") == "lfrp":
+        display_name = f"[italic]{display_name}[/italic]"
     line = f"[{color}]{display_name}[/{color}]"
 
     details = []

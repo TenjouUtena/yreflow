@@ -256,7 +256,7 @@ wheels = [
 
 [[package]]
 name = "yreflow"
-version = "0.1.1a0"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

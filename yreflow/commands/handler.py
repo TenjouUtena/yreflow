@@ -238,6 +238,21 @@ class CommandHandler:
             "function": self.handle_lookup
         }
 
+        patterns["stop_lfrp"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "stop lfrp", lambda cmd: ""),
+            ],
+            "function": self.handle_stop_lfrp,
+        }
+
+        patterns["lfrp"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "lfrp", lambda cmd: ""),
+                (lambda cmd: cmd.startswith("lfrp "), lambda cmd: cmd[5:]),
+            ],
+            "function": self.handle_lfrp,
+        }
+
         for style in patterns:
             for matcher, extractor in patterns[style]["patterns"]:
                 if matcher(command_text):
@@ -352,19 +367,32 @@ class CommandHandler:
         return CommandResult(notification="Teleporting home...")
 
     async def handle_teleport(self, location, character) -> CommandResult:
-        try:
-            nodes = self.store.get("core.node")
-        except KeyError:
-            return CommandResult(
-                success=False, notification="Cannot teleport: no nodes found."
-            )
         location_key = location.strip().lower()
         node_id = None
-        for node_key in nodes:
-            node_data = nodes[node_key]
-            if "key" in node_data and node_data["key"].lower() == location_key:
-                node_id = node_data["id"]
-                break
+
+        # Try character-specific nodes first
+        try:
+            char_node_refs = self.store.get(f"core.char.{character}.nodes._value")
+            for ref in char_node_refs:
+                node_data = self.store.get(ref["rid"])
+                if "key" in node_data and node_data["key"].lower() == location_key:
+                    node_id = node_data["id"]
+                    break
+        except KeyError:
+            pass
+
+        # Fall back to global nodes
+        if not node_id:
+            try:
+                nodes = self.store.get("core.node")
+                for node_key in nodes:
+                    node_data = nodes[node_key]
+                    if "key" in node_data and node_data["key"].lower() == location_key:
+                        node_id = node_data["id"]
+                        break
+            except KeyError:
+                pass
+
         if not node_id:
             return CommandResult(
                 success=False,
@@ -642,7 +670,7 @@ class CommandHandler:
         return await self._look_character(content, character)
     
     async def handle_lookup(self, content, character) -> CommandResult:
-        msg_id = await self.conn.send(f"core.char.{character}.lookupChars",
+        msg_id = await self.conn.send(f"call.core.player.{self.conn.player}.lookupChars",
                              {"extended": True,
                               "name": content})
         self.conn.add_message_wait(
@@ -650,13 +678,30 @@ class CommandHandler:
             lambda _result: self._lookup_result(_result)
         )
 
-    def _lookup_result(self, payload) -> CommandResult:
-        output += f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
+    async def handle_lfrp(self, content: str, character: str) -> CommandResult:
+        await self.conn.send(
+            f"call.core.player.{self.conn.player}.setCharSettings",
+            {"charId": character, "lfrpDesc": content},
+        )
+        await self.conn.send(
+            f"call.core.char.{character}.ctrl.set", {"rp": "lfrp"}
+        )
+        note = f"Looking for RP: {content}" if content else "Now looking for RP."
+        return CommandResult(display_text=note)
+
+    async def handle_stop_lfrp(self, content: str, character: str) -> CommandResult:
+        await self.conn.send(
+            f"call.core.char.{character}.ctrl.set", {"rp": ""}
+        )
+        return CommandResult(display_text="No longer looking for RP.")
+
+    async def _lookup_result(self, payload) -> None:
+        output = f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
         for char in payload.get("chars",[]):
             #output lines
             surname_len = 29 - (len(char['name']) + len(char['surname']))
             output += f"{char['name']} {char['surname']}{' '*surname_len}{char['gender']:<10}{char['species']:<20}{char['lastAwake']}"
-        return CommandResult(display_text=output)
+        await self.conn.event_bus.publish("system.text", text=output)
 
 
     def _look_room(self, character: str) -> CommandResult:

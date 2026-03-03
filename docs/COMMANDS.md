@@ -142,6 +142,20 @@ look
 l Alice
 ```
 
+### lookup
+
+Search for characters by name across the game.
+
+| Aliases | `lookup` |
+|---------|------|
+| Syntax  | `lookup <name>` |
+
+Results are displayed in a table showing character name, gender, species, and last online time.    Sends raw name to Wolfery, no matching.
+
+```
+lookup zari
+```
+
 ### laston
 
 Check when a character was last online.
@@ -230,6 +244,30 @@ Remove a character highlight.
 | Aliases | `unfocus` |
 |---------|------|
 | Syntax  | `unfocus <name>` |
+
+## RP
+
+### lfrp
+
+Set your character as looking for roleplay, with a description.
+
+| Aliases | `lfrp` |
+|---------|--------|
+| Syntax  | `lfrp <description>` |
+
+Characters marked LFRP appear **bold** in the watch list and room panel.
+
+```
+lfrp Kitty looking for adventure!
+```
+
+### stop lfrp
+
+Clear your LFRP flag.
+
+| Aliases | `stop lfrp` |
+|---------|-------------|
+| Syntax  | `stop lfrp` |
 
 ## Session
 
