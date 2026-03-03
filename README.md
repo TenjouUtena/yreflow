@@ -9,7 +9,7 @@ Wolfery is a text-based roleplaying platform. yreflow gives you a terminal UI fo
 
 ## Install
 
-Requires Python 3.11+.
+Requires Python 3.11+.    Requires the [uv](https://docs.astral.sh/uv/getting-started/installation/) installation tool.
 
 ```
 uv tool install yreflow

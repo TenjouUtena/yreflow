@@ -18,6 +18,7 @@ from .screens.character_select import CharacterSelectScreen
 from .screens.look_screen import LookScreen
 from .screens.login_screen import LoginScreen
 from .screens.profile_select import ProfileSelectScreen
+from .screens.store_browser import StoreBrowserScreen
 from ..config import load_config, save_preference
 from ..formatter import format_message
 
@@ -105,6 +106,7 @@ class WolferyCommands(Provider):
         ("Quit", "quit", "Exit yreflow (Ctrl+C)"),
         ("Toggle spellcheck", "toggle_spellcheck", "Inline spellcheck highlighting (Ctrl+S)"),
         ("Toggle markup preview", "toggle_markup_preview", "Wolfery markup preview (Ctrl+T)"),
+        ("Browse store", "open_store_browser", "Browse the live model store for debugging (Ctrl+D)"),
     ]
 
     async def search(self, query: str) -> Hits:
@@ -164,6 +166,7 @@ class WolferyApp(App):
         Binding("ctrl+grave_accent", "command_palette", "Commands", priority=True),
         Binding("ctrl+s", "toggle_spellcheck", "Spellcheck", priority=True),
         Binding("ctrl+t", "toggle_markup_preview", "Markup", priority=True),
+        Binding("ctrl+d", "open_store_browser", "Store browser", priority=True),
     ]
 
     def __init__(self, controller=None, **kwargs):
@@ -347,6 +350,10 @@ class WolferyApp(App):
         save_preference("markup_preview_enabled", enabled)
         input_bar.refresh()
         self.notify(f"Markup preview {'on' if enabled else 'off'}")
+
+    def action_open_store_browser(self) -> None:
+        if self.controller:
+            self.push_screen(StoreBrowserScreen(self.controller.store))
 
     # --- Sidebar ---
 
