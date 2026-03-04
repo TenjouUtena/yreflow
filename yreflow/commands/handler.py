@@ -273,11 +273,15 @@ class CommandHandler:
     # --- Handlers ---
 
     def _parse_directed_content(self, raw_msg: str):
-        """Parse 'Name=message' with optional pose/ooc flags."""
-        m = re.match(r"([\w ]+)=(.*)", raw_msg, re.DOTALL)
+        """Parse 'Name[, Name2, ...]=message' with optional pose/ooc flags.
+
+        Returns (names_list, msg, pose, ooc) or None if unparseable.
+        Names may be comma-separated for multi-recipient sends.
+        """
+        m = re.match(r"([\w ,]+)=(.*)", raw_msg, re.DOTALL)
         if not m:
             return None
-        name = m.group(1)
+        names = [n.strip() for n in m.group(1).split(",") if n.strip()]
         msg = m.group(2)
         pose = False
         ooc = False
@@ -289,7 +293,7 @@ class CommandHandler:
         elif msg[0:1] == ":":
             pose, msg = True, msg[1:]
 
-        return name, msg, pose, ooc
+        return names, msg, pose, ooc
 
     async def handle_say(self, content, character) -> CommandResult:
         await self.conn.send(
@@ -312,19 +316,30 @@ class CommandHandler:
         )
         return CommandResult()
 
+    def _resolve_directed_targets(self, names: list[str]):
+        """Resolve a list of name strings to (char_ids, full_names) or raise."""
+        char_ids, full_names = [], []
+        for raw_name in names:
+            char_id = parse_name(self.store, raw_name)
+            first = self.store.get_character_attribute(char_id, "name") or ""
+            last = self.store.get_character_attribute(char_id, "surname") or ""
+            char_ids.append(char_id)
+            full_names.append(f"{first} {last}".strip())
+        return char_ids, full_names
+
     async def handle_whisper(self, content, character) -> CommandResult:
         parsed = self._parse_directed_content(content["msg"])
         if not parsed:
             return CommandResult(success=False, notification="Could not parse whisper")
-        name, msg, pose, ooc = parsed
+        names, msg, pose, ooc = parsed
         try:
-            target = parse_name(self.store, name)
+            char_ids, full_names = self._resolve_directed_targets(names)
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
-        self.conn.last_directed = target
+        self.conn.push_directed_contact(char_ids, full_names, "w")
         await self.conn.send(
             f"call.core.char.{character}.ctrl.whisper",
-            {"charIds": [target], "msg": msg, "pose": pose, "ooc": ooc},
+            {"charIds": char_ids, "msg": msg, "pose": pose, "ooc": ooc},
         )
         return CommandResult()
 
@@ -332,15 +347,15 @@ class CommandHandler:
         parsed = self._parse_directed_content(content["msg"])
         if not parsed:
             return CommandResult(success=False, notification="Could not parse page")
-        name, msg, pose, ooc = parsed
+        names, msg, pose, ooc = parsed
         try:
-            target = parse_name(self.store, name)
+            char_ids, full_names = self._resolve_directed_targets(names)
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
-        self.conn.last_directed = target
+        self.conn.push_directed_contact(char_ids, full_names, "m")
         await self.conn.send(
             f"call.core.char.{character}.ctrl.message",
-            {"charIds": [target], "msg": msg, "pose": pose, "ooc": ooc},
+            {"charIds": char_ids, "msg": msg, "pose": pose, "ooc": ooc},
         )
         return CommandResult()
 
@@ -348,15 +363,15 @@ class CommandHandler:
         parsed = self._parse_directed_content(content["msg"])
         if not parsed:
             return CommandResult(success=False, notification="Could not parse address")
-        name, msg, pose, ooc = parsed
+        names, msg, pose, ooc = parsed
         try:
-            target = parse_name(self.store, name)
+            char_ids, full_names = self._resolve_directed_targets(names)
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
-        self.conn.last_directed = target
+        self.conn.push_directed_contact(char_ids, full_names, "@")
         await self.conn.send(
             f"call.core.char.{character}.ctrl.address",
-            {"charIds": [target], "msg": msg, "pose": pose, "ooc": ooc},
+            {"charIds": char_ids, "msg": msg, "pose": pose, "ooc": ooc},
         )
         return CommandResult()
 

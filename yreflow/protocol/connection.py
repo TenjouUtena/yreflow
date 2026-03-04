@@ -3,12 +3,23 @@ import asyncio
 import hmac
 import hashlib
 import base64
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import websockets
 from websockets.asyncio.client import connect
 
 _PEPPER = b"TheStoryStartsHere"
+_MAX_DIRECTED = 20
+_DIRECTED_PREFIX = {"whisper": "w", "message": "m", "address": "@"}
+
+
+@dataclass
+class DirectedContact:
+    """A directed message recipient (one or more characters)."""
+    char_ids: list[str]
+    names: list[str]       # full display names, same order as char_ids
+    prefix: str            # "w", "m", or "@"
 
 _DEFAULT_SUBSCRIPTIONS = [
     "subscribe.core.info",
@@ -52,7 +63,7 @@ class WolferyConnection:
         self.message_waits: dict = {}
         self.player: str | None = None
         self.subscribe_watches = False
-        self.last_directed: str | None = None
+        self.directed_contacts: list[DirectedContact] = []
 
         # Register model watches
         self.store.add_watch(r"core\.player.*", self._on_player_event)
@@ -87,6 +98,18 @@ class WolferyConnection:
 
     async def stop_look_at(self, whoami: str):
         return await self.send(f"call.core.char.{whoami}.ctrl.look", {"charid": whoami})
+
+    def push_directed_contact(
+        self, char_ids: list[str], names: list[str], prefix: str
+    ) -> None:
+        """Add/promote a contact to the front of directed_contacts (deduplicated)."""
+        id_set = set(char_ids)
+        self.directed_contacts = [
+            c for c in self.directed_contacts if set(c.char_ids) != id_set
+        ]
+        self.directed_contacts.insert(0, DirectedContact(char_ids, names, prefix))
+        if len(self.directed_contacts) > _MAX_DIRECTED:
+            self.directed_contacts.pop()
 
     async def _on_login_success(self, result) -> None:
         """Called when auth.auth.login succeeds — proceed to getUser."""
@@ -297,6 +320,17 @@ class WolferyConnection:
         if style in ("summon", "join"):
             await self.event_bus.publish("notification", text="Summon/join received")
             return
+
+        # Track incoming directed messages from other characters
+        if style in _DIRECTED_PREFIX and frm.get("id") != character:
+            sender_id = frm.get("id", "")
+            sender_name = (
+                frm.get("name", "") + " " + frm.get("surname", "")
+            ).strip()
+            if sender_id and sender_name:
+                self.push_directed_contact(
+                    [sender_id], [sender_name], _DIRECTED_PREFIX[style]
+                )
 
         await self.event_bus.publish(
             "message.received", message=output, style=style, character=character
