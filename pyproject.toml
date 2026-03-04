@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Games/Entertainment :: Role-Playing",
 ]
 dependencies = [
-    "textual>=8.0.0",
+    "textual>=8.0.2",
     "websockets>=16.0",
     "httpx>=0.27",
     "pyspellchecker>=0.8",
