@@ -164,6 +164,8 @@ class Sidebar(VerticalScroll):
                 for char_id in room_char_ids:
                     self._mount_entry(formatter(store, char_id))
 
+        self.scroll_home(animate=False, immediate=True, force=True)
+
     def _get_room_characters(self, store: ModelStore, character: str) -> list[str]:
         """Get character IDs of everyone in the active character's room."""
         try:

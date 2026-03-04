@@ -1,6 +1,7 @@
 """Command input bar widget."""
 
 from textual.events import Key
+from textual.message import Message
 from textual.widgets import Input
 
 from ..highlighters import CompositeHighlighter, MarkupPreviewHighlighter, SpellCheckHighlighter
@@ -8,7 +9,7 @@ from ..highlighters import CompositeHighlighter, MarkupPreviewHighlighter, Spell
 # Keys that should pass through to app-level bindings even when input is focused.
 _PASSTHROUGH_KEYS = {
     "ctrl+u", "ctrl+w", "ctrl+n", "ctrl+p", "ctrl+f", "ctrl+grave_accent",
-    "ctrl+s", "ctrl+t",
+    "ctrl+s", "ctrl+t", "ctrl+d",
 }
 
 _MAX_HISTORY = 20
@@ -24,6 +25,12 @@ class InputBar(Input):
         border: solid $accent;
     }
     """
+
+    class RecallDirected(Message):
+        """Posted when the user presses ! to recall a directed message contact."""
+        def __init__(self, index: int) -> None:
+            super().__init__()
+            self.index = index
 
     def __init__(self, **kwargs):
         self._composite = CompositeHighlighter()
@@ -41,6 +48,8 @@ class InputBar(Input):
         self._positions: dict[str, int] = {}
         self._active_char: str | None = None
         self._saved_input: dict[str, str] = {}
+        self._in_recall_mode: bool = False
+        self._recall_index: int = -1
 
     def set_active_character(self, character: str) -> None:
         """Switch which character's history is active."""
@@ -63,6 +72,26 @@ class InputBar(Input):
         self._saved_input[self._active_char] = ""
 
     async def _on_key(self, event: Key) -> None:
+        # Reset recall mode on any printable non-! key, or on backspace/delete
+        if self._in_recall_mode:
+            if event.key in ("backspace", "delete") or (
+                event.character and event.character != "!"
+            ):
+                self._in_recall_mode = False
+                self._recall_index = -1
+
+        # ! recall: cycle through directed contacts
+        if event.character == "!":
+            if self.value == "" or self._in_recall_mode:
+                if not self._in_recall_mode:
+                    self._recall_index = 0
+                else:
+                    self._recall_index += 1
+                self._in_recall_mode = True
+                self.post_message(self.RecallDirected(self._recall_index))
+                event.prevent_default()
+                return
+
         if event.key == "up":
             if self._active_char:
                 history = self._histories.get(self._active_char, [])

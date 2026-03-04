@@ -205,7 +205,7 @@ class WolferyApp(App):
 
     def _check_initial_characters(self) -> None:
         """Show character select if no characters appeared after connect."""
-        if not self.character_order:
+        if not self.character_order and self.controller and self.controller.connection.player:
             self.action_open_character_select()
 
     def _on_login_result(self, credentials: tuple[str, str] | None) -> None:
@@ -355,6 +355,20 @@ class WolferyApp(App):
         if self.controller:
             self.push_screen(StoreBrowserScreen(self.controller.store))
 
+    def on_input_bar_recall_directed(self, event: InputBar.RecallDirected) -> None:
+        """Handle ! recall: insert the nth directed contact into the input bar."""
+        if not self.controller:
+            return
+        contacts = self.controller.connection.directed_contacts
+        if not contacts:
+            return
+        contact = contacts[event.index % len(contacts)]
+        names_str = ", ".join(contact.names)
+        command = f"{contact.prefix} {names_str}="
+        input_bar = self.query_one("#input-bar", InputBar)
+        input_bar.value = command
+        input_bar.cursor_position = len(command)
+
     # --- Sidebar ---
 
     def _rebuild_sidebar(self) -> None:
@@ -423,9 +437,15 @@ class WolferyApp(App):
         sender = message["frm"].get("name", "???")
         sender_id = message["frm"].get("id", "")
         msg_text = format_message(message.get("msg", ""))
-        target = message.get("t", {})
-        target_name = target.get("name", "")
         j = message.get("j", {})
+        target = message.get("t", {})
+        target_first_name = target.get("name", "")
+        targets_extra = j.get("targets", [])
+        if targets_extra and target_first_name:
+            all_names = [target_first_name] + [t.get("name", "") for t in targets_extra if t.get("name")]
+            target_name = ", ".join(all_names)
+        else:
+            target_name = target_first_name
         has_pose = j.get("pose", False)
         is_ooc = j.get("ooc", False)
 
