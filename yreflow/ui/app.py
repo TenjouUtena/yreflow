@@ -175,6 +175,7 @@ class WolferyApp(App):
         self.active_character: str | None = None
         self.character_views: dict[str, dict] = {}
         self.unread_counts: dict[str, int] = {}
+        self.urgent_unreads: dict[str, bool] = {}
         self.character_order: list[str] = []
         self.unimportant_styles = _UNIMPORTANT_STYLES
 
@@ -284,7 +285,8 @@ class WolferyApp(App):
         char_bar = self.query_one("#character-bar", CharacterBar)
         char_bar.set_active(character)
         self.unread_counts[character] = 0
-        char_bar.update_unread(character, 0)
+        self.urgent_unreads[character] = False
+        char_bar.update_unread(character, 0, False)
 
         # Switch input history to this character
         input_bar = self.query_one("#input-bar", InputBar)
@@ -465,8 +467,16 @@ class WolferyApp(App):
         # Unread tracking for non-active characters
         if character != self.active_character and style not in self.unimportant_styles:
             self.unread_counts[character] = self.unread_counts.get(character, 0) + 1
-            char_bar = self.query_one("#character-bar", CharacterBar)
-            char_bar.update_unread(character, self.unread_counts[character])
+            if style in ("whisper", "message", "address"):
+                self.urgent_unreads[character] = True
+            self._update_unread_display(character)
+
+    def _update_unread_display(self, character: str) -> None:
+        """Push current unread count and urgency to the CharacterBar."""
+        char_bar = self.query_one("#character-bar", CharacterBar)
+        count = self.unread_counts.get(character, 0)
+        urgent = self.urgent_unreads.get(character, False)
+        char_bar.update_unread(character, count, urgent)
 
     def _format_timestamp(self, timestamp: str, focus_color: str | None) -> str:
         """Format the timestamp, applying focus background color if set."""
@@ -552,10 +562,17 @@ class WolferyApp(App):
             view = self.character_views[self.active_character]["main"]
             view.write(f"[yellow]{text}[/yellow]")
 
-    async def notify(self, text: str, **kwargs) -> None:
-        if self.active_character and self.active_character in self.character_views:
-            view = self.character_views[self.active_character]["main"]
+    async def notify(self, text: str, character: str | None = None, **kwargs) -> None:
+        target = character or self.active_character
+        if target and target in self.character_views:
+            view = self.character_views[target]["main"]
             view.write(f"[bold yellow]>> {text}[/bold yellow]")
+        # Track unread + urgent for notifications on non-active tab
+        if target and target != self.active_character and target in self.character_views:
+            self.unread_counts[target] = self.unread_counts.get(target, 0) + 1
+            if character is not None:
+                self.urgent_unreads[target] = True
+            self._update_unread_display(target)
 
     async def update_room(self) -> None:
         self._rebuild_sidebar()
@@ -613,6 +630,7 @@ class WolferyApp(App):
             "collapsible": collapsible,
         }
         self.unread_counts[character] = 0
+        self.urgent_unreads[character] = False
         self.character_order.append(character)
 
         # Add button to CharacterBar
@@ -639,6 +657,7 @@ class WolferyApp(App):
         # Clean up data structures
         del self.character_views[character]
         del self.unread_counts[character]
+        del self.urgent_unreads[character]
         self.character_order.remove(character)
 
         # If this was the active character, switch to another or show select

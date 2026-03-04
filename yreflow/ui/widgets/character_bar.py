@@ -47,9 +47,12 @@ class CharacterButton(Static):
         self.remove_class("active", "inactive")
         self.add_class("active" if active else "inactive")
 
-    def update_label(self, unread: int) -> None:
+    def update_label(self, unread: int, urgent: bool = False) -> None:
         if unread > 0:
-            self.update(f"{self._base_name} ({unread})")
+            if urgent:
+                self.update(f"{self._base_name} [{unread}]")
+            else:
+                self.update(f"{self._base_name} ({unread})")
         else:
             self.update(self._base_name)
 
@@ -122,7 +125,7 @@ class CharacterBar(Horizontal):
         for cid, btn in self._buttons.items():
             btn.set_active(cid == character_id)
 
-    def update_unread(self, character_id: str, count: int) -> None:
+    def update_unread(self, character_id: str, count: int, urgent: bool = False) -> None:
         """Update the unread badge on a character button."""
         if character_id in self._buttons:
-            self._buttons[character_id].update_label(count)
+            self._buttons[character_id].update_label(count, urgent)

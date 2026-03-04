@@ -64,8 +64,8 @@ class Controller:
     async def _on_message(self, event_name: str, message: dict, style: str, character: str, **kw) -> None:
         await self.ui.display_message(message, style, character)
 
-    async def _on_notification(self, event_name: str, text: str, **kw) -> None:
-        await self.ui.notify(text)
+    async def _on_notification(self, event_name: str, text: str, character: str | None = None, **kw) -> None:
+        await self.ui.notify(text, character=character)
 
     async def _on_room_changed(self, event_name: str, **kw) -> None:
         await self.ui.update_room()

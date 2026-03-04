@@ -149,12 +149,15 @@ class WolferyConnection:
 
     async def _on_looked_at(self, path: str, payload) -> None:
         model_parts = path.split(".")
+        character = model_parts[3]
         for who_looked in payload:
             fname = self.store.get_character_attribute(who_looked, "name")
             sname = self.store.get_character_attribute(who_looked, "surname")
-            myname = self.store.get_character_attribute(model_parts[3], "name")
+            myname = self.store.get_character_attribute(character, "name")
             await self.event_bus.publish(
-                "notification", text=f"{fname} {sname} looked at {myname}."
+                "notification",
+                text=f"{fname} {sname} looked at {myname}.",
+                character=character,
             )
 
     async def _on_inroom_change(self, path: str, payload) -> None:
@@ -318,7 +321,9 @@ class WolferyConnection:
         output = {"frm": frm, "msg": msg, "t": t, "j": j}
 
         if style in ("summon", "join"):
-            await self.event_bus.publish("notification", text="Summon/join received")
+            await self.event_bus.publish(
+                "notification", text="Summon/join received", character=character
+            )
             return
 
         # Track incoming directed messages from other characters
