@@ -460,7 +460,7 @@ class WolferyApp(App):
             style, sender, msg_text, target_name,
             has_pose, is_ooc, timestamp, focus_color,
         )
-        view.write(line)
+        view.write(f"{line}")
 
         # Unread tracking for non-active characters
         if character != self.active_character and style not in self.unimportant_styles:
