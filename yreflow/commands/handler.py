@@ -403,7 +403,7 @@ class CommandHandler:
 
         # Try character-specific nodes first
         try:
-            char_node_refs = self.store.get(f"core.char.{cc.char_id}.nodes._value")
+            char_node_refs = self.store.get(f"{cc.char_path}.nodes._value")
             for ref in char_node_refs:
                 node_data = self.store.get(ref["rid"])
                 if "key" in node_data and node_data["key"].lower() == location_key:
@@ -440,20 +440,13 @@ class CommandHandler:
         )
         return CommandResult()
 
-    def _find_exit_by_key(self, char_id: str, exit_name: str) -> dict | None:
+    def _find_exit_by_key(self, cc: ControlledChar, exit_name: str) -> dict | None:
         """Find an exit in the character's current room matching exit_name."""
-        try:
-            room_pointer = self.store.get(
-                f"core.char.{char_id}.owned.inRoom"
-            )["rid"]
-        except KeyError:
-            return None
-        try:
-            room_exits = self.store.get(room_pointer + ".exits._value")
-        except KeyError:
+        room_pointer = self.store.get_room_rid(cc.char_path)
+        if not room_pointer:
             return None
 
-        for e in room_exits:
+        for e in self.store.get_room_exits(room_pointer):
             try:
                 exit_model = self.store.get(e["rid"])
                 for k in exit_model.get("keys", {}).get("data", []):
@@ -464,7 +457,7 @@ class CommandHandler:
         return None
 
     async def handle_go(self, exit_name, cc: ControlledChar) -> CommandResult:
-        the_exit = self._find_exit_by_key(cc.char_id, exit_name)
+        the_exit = self._find_exit_by_key(cc, exit_name)
         if not the_exit:
             return CommandResult(
                 success=False, notification=f"Couldn't go {exit_name}"
@@ -591,7 +584,7 @@ class CommandHandler:
         # Look up profile by keyword first, then by name
         try:
             profiles = self.store.get(
-                f"core.char.{cc.char_id}.profiles._value"
+                f"{cc.char_path}.profiles._value"
             )
         except KeyError:
             return CommandResult(
@@ -631,11 +624,8 @@ class CommandHandler:
 
     async def handle_wa(self, content, cc: ControlledChar) -> CommandResult:
         """Handle whereat (wa) command -- show area population tree."""
-        try:
-            room_pointer = self.store.get(
-                f"core.char.{cc.char_id}.owned.inRoom"
-            )["rid"]
-        except KeyError:
+        room_pointer = self.store.get_room_rid(cc.char_path)
+        if not room_pointer:
             return CommandResult(
                 success=False, notification="Could not determine current room."
             )
@@ -729,7 +719,7 @@ class CommandHandler:
 
     async def handle_look(self, content, cc: ControlledChar) -> CommandResult:
         if content is None:
-            return self._look_room(cc.char_id)
+            return self._look_room(cc)
         return await self._look_character(content, cc)
 
     async def handle_lookup(self, content, cc: ControlledChar) -> CommandResult:
@@ -769,35 +759,28 @@ class CommandHandler:
         await self.conn.event_bus.publish("system.text", text=output)
 
 
-    def _look_room(self, character: str) -> CommandResult:
+    def _look_room(self, cc: ControlledChar) -> CommandResult:
         """Gather room data from the store and return it for display."""
-        try:
-            room_pointer = self.store.get(
-                f"core.char.{character}.owned.inRoom"
-            )["rid"]
-            room_id = room_pointer.split(".")[2]
-        except KeyError:
+        room_pointer = self.store.get_room_rid(cc.char_path)
+        if not room_pointer:
             return CommandResult(success=False, notification="Could not determine current room.")
+        room_id = room_pointer.split(".")[2]
 
         room_name = self.store.get_room_attribute(room_id, "name") or "Unknown Room"
         room_desc = self.store.get_room_attribute(room_id, "desc") or ""
 
         # Exits
         exits = []
-        try:
-            room_exits = self.store.get(room_pointer + ".exits._value")
-            for e in room_exits:
-                try:
-                    exit_model = self.store.get(e["rid"])
-                    keys = exit_model.get("keys", {}).get("data", [])
-                    exits.append({
-                        "name": exit_model.get("name", "?"),
-                        "keys": ", ".join(keys),
-                    })
-                except KeyError:
-                    continue
-        except KeyError:
-            pass
+        for e in self.store.get_room_exits(room_pointer):
+            try:
+                exit_model = self.store.get(e["rid"])
+                keys = exit_model.get("keys", {}).get("data", [])
+                exits.append({
+                    "name": exit_model.get("name", "?"),
+                    "keys": ", ".join(keys),
+                })
+            except KeyError:
+                continue
 
         # Area hierarchy
         areas = []

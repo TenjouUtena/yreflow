@@ -234,38 +234,31 @@ class NavPanel(Widget):
             event.prevent_default()
             event.stop()
 
-    async def refresh_data(self, store, char_id: str) -> None:
+    async def refresh_data(self, store, char_path: str) -> None:
         """Pull room/exit/area data from the store and update the panel."""
-        try:
-            room_pointer = store.get(
-                f"core.char.{char_id}.owned.inRoom"
-            )["rid"]
-            room_id = room_pointer.split(".")[2]
-        except KeyError:
+        room_pointer = store.get_room_rid(char_path)
+        if not room_pointer:
             return
+        room_id = room_pointer.split(".")[2]
 
         room_name = store.get_room_attribute(room_id, "name") or "Unknown Room"
         room_desc = store.get_room_attribute(room_id, "desc") or ""
 
         # Gather exits with icon and nav fields
         exits = []
-        try:
-            room_exits = store.get(room_pointer + ".exits._value")
-            for e in room_exits:
-                try:
-                    exit_model = store.get(e["rid"])
-                    keys = exit_model.get("keys", {}).get("data", [])
-                    exits.append({
-                        "id": exit_model.get("id", ""),
-                        "name": exit_model.get("name", "?"),
-                        "keys": keys,
-                        "icon": exit_model.get("icon", ""),
-                        "nav": exit_model.get("nav", ""),
-                    })
-                except KeyError:
-                    continue
-        except KeyError:
-            pass
+        for e in store.get_room_exits(room_pointer):
+            try:
+                exit_model = store.get(e["rid"])
+                keys = exit_model.get("keys", {}).get("data", [])
+                exits.append({
+                    "id": exit_model.get("id", ""),
+                    "name": exit_model.get("name", "?"),
+                    "keys": keys,
+                    "icon": exit_model.get("icon", ""),
+                    "nav": exit_model.get("nav", ""),
+                })
+            except KeyError:
+                continue
         self._exits = exits
 
         # Gather area hierarchy

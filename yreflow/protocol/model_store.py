@@ -96,6 +96,39 @@ class ModelStore:
                 continue
         return default
 
+    def get_room_rid(self, char_path: str) -> str | None:
+        """Get the room RID for a character, trying owned then ctrl paths."""
+        for sub in ("owned", "ctrl"):
+            try:
+                return self.get(f"{char_path}.{sub}.inRoom")["rid"]
+            except (KeyError, TypeError):
+                continue
+        return None
+
+    def get_room_chars(self, room_pointer: str) -> list:
+        """Get character entries for a room, following RID references if needed."""
+        try:
+            chars_node = self.get(room_pointer + ".chars")
+            if chars_node and "rid" in chars_node:
+                chars_path = chars_node["rid"]
+            else:
+                chars_path = room_pointer + ".chars"
+            return self.get(chars_path + "._value")
+        except KeyError:
+            return []
+
+    def get_room_exits(self, room_pointer: str) -> list:
+        """Get exit entries for a room, following RID references if needed."""
+        try:
+            exits_node = self.get(room_pointer + ".exits")
+            if exits_node and "rid" in exits_node:
+                exit_path = exits_node["rid"]
+            else:
+                exit_path = room_pointer + ".exits"
+            return self.get(exit_path + "._value")
+        except KeyError:
+            return []
+
     def get_room_attribute(self, room: str, attribute: str, default: Any = "") -> Any:
         try:
             return self.get(f"core.room.{room}.{attribute}")

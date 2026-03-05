@@ -396,16 +396,16 @@ class WolferyApp(App):
             container = views["container"]
             await container.mount(nav_panel)
             views["nav_panel"] = nav_panel
-            char_id = self._resolve_char_id(self.active_character)
-            await nav_panel.refresh_data(self.controller.store, char_id)
+            char_path = self._resolve_char_path(self.active_character)
+            await nav_panel.refresh_data(self.controller.store, char_path)
             input_bar.set_nav_mode(True)
         elif nav_panel.display:
             nav_panel.display = False
             input_bar.set_nav_mode(False)
         else:
             nav_panel.display = True
-            char_id = self._resolve_char_id(self.active_character)
-            await nav_panel.refresh_data(self.controller.store, char_id)
+            char_path = self._resolve_char_path(self.active_character)
+            await nav_panel.refresh_data(self.controller.store, char_path)
             input_bar.set_nav_mode(True)
 
     async def on_nav_panel_exit_selected(self, event: NavPanel.ExitSelected) -> None:
@@ -449,11 +449,11 @@ class WolferyApp(App):
         if not self.controller:
             return
         sidebar = self.query_one("#sidebar", Sidebar)
-        active_char_id = self._resolve_char_id(self.active_character) if self.active_character else None
+        active_char_path = self._resolve_char_path(self.active_character) if self.active_character else None
         sidebar.rebuild(
             self.controller.store,
             self.controller.connection.player,
-            active_char_id,
+            active_char_path,
         )
         self._update_spellcheck_dictionary()
 
@@ -486,7 +486,8 @@ class WolferyApp(App):
         if not self.controller or not character:
             return None
         store = self.controller.store
-        char_id = self._resolve_char_id(character)
+        cc = self.controller.connection.get_controlled_char(character)
+        char_id = cc.char_id if cc else character
         focus = store.get_character_attribute(char_id, "focus", {})
         if not isinstance(focus, dict):
             return None
@@ -654,19 +655,19 @@ class WolferyApp(App):
         if self.active_character and self.active_character in self.character_views:
             nav_panel = self.character_views[self.active_character].get("nav_panel")
             if nav_panel and nav_panel.display and self.controller:
-                char_id = self._resolve_char_id(self.active_character)
-                await nav_panel.refresh_data(self.controller.store, char_id)
+                char_path = self._resolve_char_path(self.active_character)
+                await nav_panel.refresh_data(self.controller.store, char_path)
 
     async def update_watch_list(self) -> None:
         self._rebuild_sidebar()
 
-    def _resolve_char_id(self, ctrl_id: str) -> str:
-        """Extract raw char_id from a ctrl_id via the connection registry."""
+    def _resolve_char_path(self, ctrl_id: str) -> str:
+        """Return the full model path for a ctrl_id (handles puppets)."""
         if self.controller:
             cc = self.controller.connection.get_controlled_char(ctrl_id)
             if cc:
-                return cc.char_id
-        return ctrl_id
+                return cc.char_path
+        return f"core.char.{ctrl_id}"
 
     async def ensure_character_tab(self, character: str) -> None:
         if character in self.character_views:
