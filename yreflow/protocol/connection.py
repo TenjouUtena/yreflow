@@ -72,6 +72,7 @@ class WolferyConnection:
         self.store.add_watch(r"core\.lookedat\.char\..*", self._on_looked_at)
         self.store.add_watch(r"core\.char\.\w+\.inroom", self._on_inroom_change)
         self.store.add_watch(r"core\.room\.\w+\.chars", self._on_inroom_change)
+        self.store.add_watch(r"core\.room\.\w+\.exits", self._on_inroom_change)
         self.store.add_watch(r"note\.player\.\w+\.watches", self._on_watches_change)
         self.store.add_watch(r"core\.chars\.awake", self._on_watches_change)
         self.store.add_watch(r"core\.player\.\w+\.ctrls\.remove", self._on_tabs_change)
