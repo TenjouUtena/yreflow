@@ -24,6 +24,9 @@ def format_message(msg_text: str) -> str:
 
     msg_text = re.sub(url_find, _replace_link, msg_text)
 
+    # Strip <nobr> tags (Rich/Textual has no non-breaking span support)
+    msg_text = re.sub(r"</?nobr>", "", msg_text)
+
     # Character-level formatting pass
     bold = False
     italic = False
