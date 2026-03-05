@@ -249,11 +249,15 @@ class WolferyApp(App):
             if result and result.look_data:
                 self.push_screen(LookScreen(result.look_data))
             if result and result.open_profile_select:
+                cc = self.controller.connection.get_controlled_char(self.active_character)
+                if cc is None:
+                    from ..protocol.controlled_char import ControlledChar
+                    cc = ControlledChar(char_id=self.active_character)
                 self.push_screen(
                     ProfileSelectScreen(
                         self.controller.store,
                         self.controller.connection,
-                        self.active_character,
+                        cc,
                     ),
                     callback=self._on_profile_selected,
                 )
@@ -377,10 +381,11 @@ class WolferyApp(App):
         if not self.controller:
             return
         sidebar = self.query_one("#sidebar", Sidebar)
+        active_char_id = self._resolve_char_id(self.active_character) if self.active_character else None
         sidebar.rebuild(
             self.controller.store,
             self.controller.connection.player,
-            self.active_character,
+            active_char_id,
         )
         self._update_spellcheck_dictionary()
 
@@ -413,7 +418,8 @@ class WolferyApp(App):
         if not self.controller or not character:
             return None
         store = self.controller.store
-        focus = store.get_character_attribute(character, "focus", {})
+        char_id = self._resolve_char_id(character)
+        focus = store.get_character_attribute(char_id, "focus", {})
         if not isinstance(focus, dict):
             return None
         if sender_id in focus:
@@ -580,18 +586,33 @@ class WolferyApp(App):
     async def update_watch_list(self) -> None:
         self._rebuild_sidebar()
 
+    def _resolve_char_id(self, ctrl_id: str) -> str:
+        """Extract raw char_id from a ctrl_id via the connection registry."""
+        if self.controller:
+            cc = self.controller.connection.get_controlled_char(ctrl_id)
+            if cc:
+                return cc.char_id
+        return ctrl_id
+
     async def ensure_character_tab(self, character: str) -> None:
         if character in self.character_views:
             return
 
-        # Get character display name
+        # Get character display name (character param is ctrl_id)
         name = "Unknown"
         if self.controller:
             store = self.controller.store
-            name = store.get_character_attribute(character, "name")
-            surname = store.get_character_attribute(character, "surname")
+            cc = self.controller.connection.get_controlled_char(character)
+            char_id = cc.char_id if cc else character
+            name = store.get_character_attribute(char_id, "name")
+            surname = store.get_character_attribute(char_id, "surname")
             if surname:
                 name = f"{name} {surname}"
+            if cc and cc.is_puppet:
+                puppeteer_name = store.get_character_attribute(
+                    cc.puppeteer_id, "name"
+                )
+                name = f"{name} ({puppeteer_name}'s puppet)"
 
         # Create per-character message views
         main_view = MessageView(

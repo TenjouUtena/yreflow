@@ -16,6 +16,7 @@ from .name_resolver import parse_name, NameParseException
 if TYPE_CHECKING:
     from ..protocol.connection import WolferyConnection
     from ..protocol.model_store import ModelStore
+    from ..protocol.controlled_char import ControlledChar
 
 
 @dataclass
@@ -260,14 +261,14 @@ class CommandHandler:
 
         return ("unknown", command_text, None)
 
-    async def process_command(self, command: str, character: str) -> CommandResult:
+    async def process_command(self, command: str, cc: ControlledChar) -> CommandResult:
         command = command.strip()
         if not command:
             return CommandResult()
 
         command_type, content, func_call = self.detect_command_type(command)
         if func_call:
-            return await func_call(content, character)
+            return await func_call(content, cc)
         return CommandResult(success=False, notification=f"Unknown command: {command}")
 
     # --- Handlers ---
@@ -295,24 +296,24 @@ class CommandHandler:
 
         return names, msg, pose, ooc
 
-    async def handle_say(self, content, character) -> CommandResult:
+    async def handle_say(self, content, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.say", {"msg": content}
+            f"call.{cc.ctrl_path}.say", {"msg": content}
         )
         return CommandResult()
 
-    async def handle_pose(self, content, character) -> CommandResult:
+    async def handle_pose(self, content, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.pose", {"msg": content}
+            f"call.{cc.ctrl_path}.pose", {"msg": content}
         )
         return CommandResult()
 
-    async def handle_ooc(self, content, character) -> CommandResult:
+    async def handle_ooc(self, content, cc: ControlledChar) -> CommandResult:
         payload = {"msg": content["msg"]}
         if content["pose"]:
             payload["pose"] = True
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.ooc", payload
+            f"call.{cc.ctrl_path}.ooc", payload
         )
         return CommandResult()
 
@@ -327,7 +328,7 @@ class CommandHandler:
             full_names.append(f"{first} {last}".strip())
         return char_ids, full_names
 
-    async def handle_whisper(self, content, character) -> CommandResult:
+    async def handle_whisper(self, content, cc: ControlledChar) -> CommandResult:
         parsed = self._parse_directed_content(content["msg"])
         if not parsed:
             return CommandResult(success=False, notification="Could not parse whisper")
@@ -338,12 +339,12 @@ class CommandHandler:
             return CommandResult(success=False, notification=str(e))
         self.conn.push_directed_contact(char_ids, full_names, "w")
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.whisper",
+            f"call.{cc.ctrl_path}.whisper",
             {"charIds": char_ids, "msg": msg, "pose": pose, "ooc": ooc},
         )
         return CommandResult()
 
-    async def handle_page(self, content, character) -> CommandResult:
+    async def handle_page(self, content, cc: ControlledChar) -> CommandResult:
         parsed = self._parse_directed_content(content["msg"])
         if not parsed:
             return CommandResult(success=False, notification="Could not parse page")
@@ -354,12 +355,12 @@ class CommandHandler:
             return CommandResult(success=False, notification=str(e))
         self.conn.push_directed_contact(char_ids, full_names, "m")
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.message",
+            f"call.{cc.ctrl_path}.message",
             {"charIds": char_ids, "msg": msg, "pose": pose, "ooc": ooc},
         )
         return CommandResult()
 
-    async def handle_address(self, content, character) -> CommandResult:
+    async def handle_address(self, content, cc: ControlledChar) -> CommandResult:
         parsed = self._parse_directed_content(content["msg"])
         if not parsed:
             return CommandResult(success=False, notification="Could not parse address")
@@ -370,24 +371,24 @@ class CommandHandler:
             return CommandResult(success=False, notification=str(e))
         self.conn.push_directed_contact(char_ids, full_names, "@")
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.address",
+            f"call.{cc.ctrl_path}.address",
             {"charIds": char_ids, "msg": msg, "pose": pose, "ooc": ooc},
         )
         return CommandResult()
 
-    async def handle_home(self, content, character) -> CommandResult:
+    async def handle_home(self, content, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.teleportHome", {}
+            f"call.{cc.ctrl_path}.teleportHome", {}
         )
         return CommandResult(notification="Teleporting home...")
 
-    async def handle_teleport(self, location, character) -> CommandResult:
+    async def handle_teleport(self, location, cc: ControlledChar) -> CommandResult:
         location_key = location.strip().lower()
         node_id = None
 
         # Try character-specific nodes first
         try:
-            char_node_refs = self.store.get(f"core.char.{character}.nodes._value")
+            char_node_refs = self.store.get(f"core.char.{cc.char_id}.nodes._value")
             for ref in char_node_refs:
                 node_data = self.store.get(ref["rid"])
                 if "key" in node_data and node_data["key"].lower() == location_key:
@@ -414,20 +415,20 @@ class CommandHandler:
                 notification=f"Cannot teleport: '{location}' not found.",
             )
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.teleport", {"nodeId": node_id}
+            f"call.{cc.ctrl_path}.teleport", {"nodeId": node_id}
         )
         return CommandResult(notification=f"Teleported to {location}.")
 
-    async def handle_sweep(self, content, character) -> CommandResult:
+    async def handle_sweep(self, content, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.sweep", {}
+            f"call.{cc.ctrl_path}.sweep", {}
         )
         return CommandResult()
 
-    async def handle_go(self, exit_name, character) -> CommandResult:
+    async def handle_go(self, exit_name, cc: ControlledChar) -> CommandResult:
         try:
             room_pointer = self.store.get(
-                f"core.char.{character}.owned.inRoom"
+                f"core.char.{cc.char_id}.owned.inRoom"
             )["rid"]
         except KeyError:
             return CommandResult(
@@ -449,25 +450,25 @@ class CommandHandler:
                 success=False, notification=f"Couldn't go {exit_name}"
             )
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.useExit",
+            f"call.{cc.ctrl_path}.useExit",
             {"exitId": the_exit["id"]},
         )
         return CommandResult()
 
-    async def handle_status(self, status_text, character) -> CommandResult:
+    async def handle_status(self, status_text, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.set", {"status": status_text}
+            f"call.{cc.ctrl_path}.set", {"status": status_text}
         )
         note = f"Status set to: {status_text}" if status_text else "Status cleared"
         return CommandResult(notification=note)
 
-    async def handle_release(self, content, character) -> CommandResult:
+    async def handle_release(self, content, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.release", {}
+            f"call.{cc.ctrl_path}.release", {}
         )
         return CommandResult(notification="Character released")
 
-    async def handle_focus(self, content, character) -> CommandResult:
+    async def handle_focus(self, content, cc: ControlledChar) -> CommandResult:
         m = re.match(r"([\w ]+)=(.*)", content, re.DOTALL)
         if not m:
             return CommandResult(success=False, notification="Could not parse focus")
@@ -478,72 +479,76 @@ class CommandHandler:
             return CommandResult(
                 success=False, notification="Could not find a unique person."
             )
+        params = {"targetId": target_id, "charId": cc.char_id, "color": color}
+        if cc.is_puppet:
+            params["puppeteerId"] = cc.puppeteer_id
         await self.conn.send(
-            f"call.core.player.{self.conn.player}.focusChar",
-            {"targetId": target_id, "charId": character, "color": color},
+            f"call.core.player.{self.conn.player}.focusChar", params,
         )
         return CommandResult()
 
-    async def handle_unfocus(self, content, character) -> CommandResult:
+    async def handle_unfocus(self, content, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, content, wants="id")
         except NameParseException:
             return CommandResult(
                 success=False, notification="Could not find a unique person."
             )
+        params = {"targetId": target_id, "charId": cc.char_id}
+        if cc.is_puppet:
+            params["puppeteerId"] = cc.puppeteer_id
         await self.conn.send(
-            f"call.core.player.{self.conn.player}.unfocusChar",
-            {"targetId": target_id, "charId": character},
+            f"call.core.player.{self.conn.player}.unfocusChar", params,
         )
         return CommandResult()
 
-    async def handle_summon(self, name_to_summon, character) -> CommandResult:
+    async def handle_summon(self, name_to_summon, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_summon)
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.summon", {"charId": target_id}
+            f"call.{cc.ctrl_path}.summon", {"charId": target_id}
         )
         return CommandResult(notification=f"Summoning {name_to_summon}...")
 
-    async def handle_join(self, name_to_join, character) -> CommandResult:
+    async def handle_join(self, name_to_join, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_join)
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.join", {"charId": target_id}
+            f"call.{cc.ctrl_path}.join", {"charId": target_id}
         )
         return CommandResult(notification=f"Joining {name_to_join}...")
 
-    async def handle_lead(self, name_to_lead, character) -> CommandResult:
+    async def handle_lead(self, name_to_lead, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_lead)
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.lead", {"charId": target_id}
+            f"call.{cc.ctrl_path}.lead", {"charId": target_id}
         )
         return CommandResult(notification=f"Leading {name_to_lead}...")
 
-    async def handle_follow(self, name_to_follow, character) -> CommandResult:
+    async def handle_follow(self, name_to_follow, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_follow)
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.follow", {"charId": target_id}
+            f"call.{cc.ctrl_path}.follow", {"charId": target_id}
         )
         return CommandResult(notification=f"Following {name_to_follow}...")
 
-    async def handle_profile(self, profile_name, character) -> CommandResult:
+    async def handle_profile(self, profile_name, cc: ControlledChar) -> CommandResult:
         if not profile_name:
             return CommandResult(open_profile_select=True)
         # Look up profile by keyword first, then by name
         try:
             profiles = self.store.get(
-                f"core.char.{character}.profiles._value"
+                f"core.char.{cc.char_id}.profiles._value"
             )
         except KeyError:
             return CommandResult(
@@ -555,7 +560,7 @@ class CommandHandler:
             try:
                 profile = self.store.get(entry["rid"])
                 if profile.get("key", "").lower() == search:
-                    return await self._switch_profile(entry, profile, character)
+                    return await self._switch_profile(entry, profile, cc)
             except (KeyError, AttributeError):
                 continue
         # Pass 2: match name
@@ -563,7 +568,7 @@ class CommandHandler:
             try:
                 profile = self.store.get(entry["rid"])
                 if profile.get("name", "").lower() == search:
-                    return await self._switch_profile(entry, profile, character)
+                    return await self._switch_profile(entry, profile, cc)
             except (KeyError, AttributeError):
                 continue
         return CommandResult(
@@ -571,21 +576,21 @@ class CommandHandler:
             notification=f"Profile not found: {profile_name}",
         )
 
-    async def _switch_profile(self, entry, profile, character) -> CommandResult:
+    async def _switch_profile(self, entry, profile, cc: ControlledChar) -> CommandResult:
         profile_id = entry["rid"].split(".")[-1]
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.useProfile",
+            f"call.{cc.ctrl_path}.useProfile",
             {"profileId": profile_id, "safe": True},
         )
         return CommandResult(
             notification=f"Morphing into {profile.get('name', '?')}..."
         )
 
-    async def handle_wa(self, content, character) -> CommandResult:
+    async def handle_wa(self, content, cc: ControlledChar) -> CommandResult:
         """Handle whereat (wa) command -- show area population tree."""
         try:
             room_pointer = self.store.get(
-                f"core.char.{character}.owned.inRoom"
+                f"core.char.{cc.char_id}.owned.inRoom"
             )["rid"]
         except KeyError:
             return CommandResult(
@@ -655,7 +660,7 @@ class CommandHandler:
 
         return result
 
-    async def handle_laston(self, name_to_check, character) -> CommandResult:
+    async def handle_laston(self, name_to_check, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_check, awake=False)
         except NameParseException as e:
@@ -679,12 +684,12 @@ class CommandHandler:
             display_text=f"{char_name} was last online {last_awake}"
         )
 
-    async def handle_look(self, content, character) -> CommandResult:
+    async def handle_look(self, content, cc: ControlledChar) -> CommandResult:
         if content is None:
-            return self._look_room(character)
-        return await self._look_character(content, character)
-    
-    async def handle_lookup(self, content, character) -> CommandResult:
+            return self._look_room(cc.char_id)
+        return await self._look_character(content, cc)
+
+    async def handle_lookup(self, content, cc: ControlledChar) -> CommandResult:
         msg_id = await self.conn.send(f"call.core.player.{self.conn.player}.lookupChars",
                              {"extended": True,
                               "name": content})
@@ -693,20 +698,22 @@ class CommandHandler:
             lambda _result: self._lookup_result(_result)
         )
 
-    async def handle_lfrp(self, content: str, character: str) -> CommandResult:
+    async def handle_lfrp(self, content: str, cc: ControlledChar) -> CommandResult:
+        params = {"charId": cc.char_id, "lfrpDesc": content}
+        if cc.is_puppet:
+            params["puppeteerId"] = cc.puppeteer_id
         await self.conn.send(
-            f"call.core.player.{self.conn.player}.setCharSettings",
-            {"charId": character, "lfrpDesc": content},
+            f"call.core.player.{self.conn.player}.setCharSettings", params,
         )
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.set", {"rp": "lfrp"}
+            f"call.{cc.ctrl_path}.set", {"rp": "lfrp"}
         )
         note = f"Looking for RP: {content}" if content else "Now looking for RP."
         return CommandResult(display_text=note)
 
-    async def handle_stop_lfrp(self, content: str, character: str) -> CommandResult:
+    async def handle_stop_lfrp(self, content: str, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
-            f"call.core.char.{character}.ctrl.set", {"rp": ""}
+            f"call.{cc.ctrl_path}.set", {"rp": ""}
         )
         return CommandResult(display_text="No longer looking for RP.")
 
@@ -789,14 +796,14 @@ class CommandHandler:
             "areas": areas,
         })
 
-    async def _look_character(self, name_str: str, character: str) -> CommandResult:
+    async def _look_character(self, name_str: str, cc: ControlledChar) -> CommandResult:
         """Look at a character: send ctrl.look, then gather data on response."""
         try:
             target_id = parse_name(self.store, name_str.strip())
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
 
-        msg_id = await self.conn.look_at(target_id, character)
+        msg_id = await self.conn.look_at(target_id, cc)
         self.conn.add_message_wait(
             msg_id,
             lambda _result, tid=target_id: self._on_look_result(tid),
