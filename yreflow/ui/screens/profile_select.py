@@ -92,6 +92,7 @@ class ProfileSelectScreen(ModalScreen):
         self.store = store
         self.connection = connection
         self.cc = cc
+        self._dismissed = False
 
     def compose(self):
         with Vertical(id="profile-container"):
@@ -132,6 +133,9 @@ class ProfileSelectScreen(ModalScreen):
         self, event: ProfileOption.Selected
     ) -> None:
         """Switch to the selected profile."""
+        if self._dismissed:
+            return
+        self._dismissed = True
         await self.connection.send(
             f"call.{self.cc.ctrl_path}.useProfile",
             {"profileId": event.profile_id, "safe": True},

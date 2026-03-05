@@ -176,6 +176,7 @@ class CharacterSelectScreen(ModalScreen):
         super().__init__(**kwargs)
         self.store = store
         self.connection = connection
+        self._dismissed = False
 
     def compose(self):
         with Vertical(id="select-container"):
@@ -281,6 +282,9 @@ class CharacterSelectScreen(ModalScreen):
         self, event: PuppetOption.Selected
     ) -> None:
         """Take control of a puppet character."""
+        if self._dismissed:
+            return
+        self._dismissed = True
         msg_id = await self.connection.send(
             f"call.core.player.{self.connection.player}.controlPuppet",
             {"charId": event.puppeteer_id, "puppetId": event.puppet_id},
@@ -297,6 +301,9 @@ class CharacterSelectScreen(ModalScreen):
         self, event: CharacterOption.Selected
     ) -> None:
         """Take control of (and optionally wake up) the selected character."""
+        if self._dismissed:
+            return
+        self._dismissed = True
         char_id = event.character_id
         # Phase 1: take control of character
         msg_id = await self.connection.send(
