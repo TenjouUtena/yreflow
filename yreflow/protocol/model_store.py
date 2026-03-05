@@ -1,6 +1,8 @@
 import re
+import logging
 from typing import Any
 
+log = logging.getLogger(__name__)
 
 class ModelStore:
     """Hierarchical data model store with dot-notation path access.
@@ -35,17 +37,15 @@ class ModelStore:
         if collection:
             node["_value"] = payload
         else:
-            actioned = False
+            node |= payload
             for k in payload:
                 if isinstance(payload[k], dict) and "action" in payload[k]:
                     if payload[k]["action"] == "delete":
                         try:
                             del node[k]
                         except KeyError:
+                            log.warning(f"Tried to delete key {node}.{k} and couldn't find it.")
                             pass
-                        actioned = True
-            if not actioned:
-                node |= payload
 
         await self._fire_watches(path, payload)
 
@@ -76,9 +76,11 @@ class ModelStore:
             _value.insert(index, value)
         elif command == "remove":
             try:
-                _value.pop(index)
+                removed = _value.pop(index)
             except IndexError:
-                pass
+                removed = value
+            await self._fire_watches(path, removed)
+            return
 
         await self._fire_watches(path, value)
 
