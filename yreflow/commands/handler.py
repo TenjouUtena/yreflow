@@ -425,26 +425,31 @@ class CommandHandler:
         )
         return CommandResult()
 
-    async def handle_go(self, exit_name, cc: ControlledChar) -> CommandResult:
+    def _find_exit_by_key(self, char_id: str, exit_name: str) -> dict | None:
+        """Find an exit in the character's current room matching exit_name."""
         try:
             room_pointer = self.store.get(
-                f"core.char.{cc.char_id}.owned.inRoom"
+                f"core.char.{char_id}.owned.inRoom"
             )["rid"]
         except KeyError:
-            return CommandResult(
-                success=False, notification="Could not determine current room."
-            )
+            return None
         try:
             room_exits = self.store.get(room_pointer + ".exits._value")
         except KeyError:
-            room_exits = []
+            return None
 
-        the_exit = None
         for e in room_exits:
-            exit_model = self.store.get(e["rid"])
-            for k in exit_model["keys"]["data"]:
-                if k.casefold() == exit_name.casefold():
-                    the_exit = exit_model
+            try:
+                exit_model = self.store.get(e["rid"])
+                for k in exit_model.get("keys", {}).get("data", []):
+                    if k.casefold() == exit_name.casefold():
+                        return exit_model
+            except KeyError:
+                continue
+        return None
+
+    async def handle_go(self, exit_name, cc: ControlledChar) -> CommandResult:
+        the_exit = self._find_exit_by_key(cc.char_id, exit_name)
         if not the_exit:
             return CommandResult(
                 success=False, notification=f"Couldn't go {exit_name}"

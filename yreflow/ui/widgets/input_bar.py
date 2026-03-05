@@ -9,7 +9,14 @@ from ..highlighters import CompositeHighlighter, MarkupPreviewHighlighter, Spell
 # Keys that should pass through to app-level bindings even when input is focused.
 _PASSTHROUGH_KEYS = {
     "ctrl+u", "ctrl+w", "ctrl+n", "ctrl+p", "ctrl+f", "ctrl+grave_accent",
-    "ctrl+s", "ctrl+t", "ctrl+d",
+    "ctrl+s", "ctrl+t", "ctrl+d", "ctrl+g",
+}
+
+# Keys that pass through when nav mode is active (so they reach NavPanel).
+_NAV_PASSTHROUGH_KEYS = {
+    "up", "down", "left", "right",
+    "home", "end", "pageup", "pagedown",
+    "escape",
 }
 
 _MAX_HISTORY = 20
@@ -50,6 +57,7 @@ class InputBar(Input):
         self._saved_input: dict[str, str] = {}
         self._in_recall_mode: bool = False
         self._recall_index: int = -1
+        self._nav_mode: bool = False
 
     def set_active_character(self, character: str) -> None:
         """Switch which character's history is active."""
@@ -71,7 +79,15 @@ class InputBar(Input):
         self._positions[self._active_char] = len(history)
         self._saved_input[self._active_char] = ""
 
+    def set_nav_mode(self, enabled: bool) -> None:
+        """Enable/disable navigation mode (arrow keys pass through to NavPanel)."""
+        self._nav_mode = enabled
+
     async def _on_key(self, event: Key) -> None:
+        # In nav mode, let directional keys bubble up to NavPanel
+        if self._nav_mode and event.key in _NAV_PASSTHROUGH_KEYS:
+            return
+
         # Reset recall mode on any printable non-! key, or on backspace/delete
         if self._in_recall_mode:
             if event.key in ("backspace", "delete") or (

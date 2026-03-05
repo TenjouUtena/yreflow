@@ -12,6 +12,7 @@ from textual.widgets import Header, Footer, Collapsible
 
 from .widgets.message_view import MessageView
 from .widgets.input_bar import InputBar
+from .widgets.nav_panel import NavPanel
 from .widgets.watch_list import Sidebar
 from .widgets.character_bar import CharacterBar, CharacterButton, AddCharacterButton
 from .screens.character_select import CharacterSelectScreen
@@ -107,6 +108,7 @@ class WolferyCommands(Provider):
         ("Toggle spellcheck", "toggle_spellcheck", "Inline spellcheck highlighting (Ctrl+S)"),
         ("Toggle markup preview", "toggle_markup_preview", "Wolfery markup preview (Ctrl+T)"),
         ("Browse store", "open_store_browser", "Browse the live model store for debugging (Ctrl+D)"),
+        ("Toggle navigation", "toggle_nav_panel", "Open/close navigation panel (Ctrl+G)"),
     ]
 
     async def search(self, query: str) -> Hits:
@@ -167,6 +169,7 @@ class WolferyApp(App):
         Binding("ctrl+s", "toggle_spellcheck", "Spellcheck", priority=True),
         Binding("ctrl+t", "toggle_markup_preview", "Markup", priority=True),
         Binding("ctrl+d", "open_store_browser", "Store browser", priority=True),
+        Binding("ctrl+g", "toggle_nav_panel", "Navigation", priority=True),
     ]
 
     def __init__(self, controller=None, **kwargs):
@@ -245,6 +248,20 @@ class WolferyApp(App):
         input_bar.push_history(command)
 
         if self.controller and self.active_character:
+            # Nav mode: check if typed text matches an exit name
+            views = self.character_views.get(self.active_character, {})
+            nav_panel = views.get("nav_panel")
+            if nav_panel and nav_panel.display:
+                matched = nav_panel.find_exit_by_key(command)
+                if matched:
+                    cc = self.controller.connection.get_controlled_char(self.active_character)
+                    if cc:
+                        await self.controller.connection.send(
+                            f"call.{cc.ctrl_path}.useExit",
+                            {"exitId": matched["id"]},
+                        )
+                        return
+
             result = await self.controller.handle_command(command, self.active_character)
             if result and result.look_data:
                 self.push_screen(LookScreen(result.look_data))
@@ -295,6 +312,10 @@ class WolferyApp(App):
         # Switch input history to this character
         input_bar = self.query_one("#input-bar", InputBar)
         input_bar.set_active_character(character)
+
+        # Sync nav mode with new character's nav panel state
+        nav_panel = self.character_views[character].get("nav_panel")
+        input_bar.set_nav_mode(bool(nav_panel and nav_panel.display))
 
         # Rebuild sidebar for this character's room
         self._rebuild_sidebar()
@@ -360,6 +381,53 @@ class WolferyApp(App):
     def action_open_store_browser(self) -> None:
         if self.controller:
             self.push_screen(StoreBrowserScreen(self.controller.store))
+
+    async def action_toggle_nav_panel(self) -> None:
+        if not self.controller or not self.active_character:
+            return
+        views = self.character_views.get(self.active_character)
+        if not views:
+            return
+        input_bar = self.query_one("#input-bar", InputBar)
+        nav_panel = views.get("nav_panel")
+        if nav_panel is None:
+            # First open: mount the panel into the character container
+            nav_panel = NavPanel(id=f"nav-panel-{self.active_character}")
+            container = views["container"]
+            await container.mount(nav_panel)
+            views["nav_panel"] = nav_panel
+            char_id = self._resolve_char_id(self.active_character)
+            await nav_panel.refresh_data(self.controller.store, char_id)
+            input_bar.set_nav_mode(True)
+        elif nav_panel.display:
+            nav_panel.display = False
+            input_bar.set_nav_mode(False)
+        else:
+            nav_panel.display = True
+            char_id = self._resolve_char_id(self.active_character)
+            await nav_panel.refresh_data(self.controller.store, char_id)
+            input_bar.set_nav_mode(True)
+
+    async def on_nav_panel_exit_selected(self, event: NavPanel.ExitSelected) -> None:
+        """Handle directional navigation from the nav panel."""
+        if not self.controller or not self.active_character:
+            return
+        cc = self.controller.connection.get_controlled_char(self.active_character)
+        if cc is None:
+            return
+        await self.controller.connection.send(
+            f"call.{cc.ctrl_path}.useExit",
+            {"exitId": event.exit_id},
+        )
+
+    def on_nav_panel_close_requested(self, event: NavPanel.CloseRequested) -> None:
+        """Close the navigation panel on ESC."""
+        if self.active_character and self.active_character in self.character_views:
+            nav_panel = self.character_views[self.active_character].get("nav_panel")
+            if nav_panel:
+                nav_panel.display = False
+                input_bar = self.query_one("#input-bar", InputBar)
+                input_bar.set_nav_mode(False)
 
     def on_input_bar_recall_directed(self, event: InputBar.RecallDirected) -> None:
         """Handle ! recall: insert the nth directed contact into the input bar."""
@@ -582,6 +650,12 @@ class WolferyApp(App):
 
     async def update_room(self) -> None:
         self._rebuild_sidebar()
+        # Refresh nav panel if open
+        if self.active_character and self.active_character in self.character_views:
+            nav_panel = self.character_views[self.active_character].get("nav_panel")
+            if nav_panel and nav_panel.display and self.controller:
+                char_id = self._resolve_char_id(self.active_character)
+                await nav_panel.refresh_data(self.controller.store, char_id)
 
     async def update_watch_list(self) -> None:
         self._rebuild_sidebar()
