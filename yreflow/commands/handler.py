@@ -510,42 +510,46 @@ class CommandHandler:
     async def handle_summon(self, name_to_summon, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_summon)
+            display_name = parse_name(self.store, name_to_summon, wants="name")
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
         await self.conn.send(
             f"call.{cc.ctrl_path}.summon", {"charId": target_id}
         )
-        return CommandResult(notification=f"Summoning {name_to_summon}...")
+        return CommandResult(notification=f"Summoning {display_name}...")
 
     async def handle_join(self, name_to_join, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_join)
+            display_name = parse_name(self.store, name_to_join, wants="name")
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
         await self.conn.send(
             f"call.{cc.ctrl_path}.join", {"charId": target_id}
         )
-        return CommandResult(notification=f"Joining {name_to_join}...")
+        return CommandResult(notification=f"Joining {display_name}...")
 
     async def handle_lead(self, name_to_lead, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_lead)
+            display_name = parse_name(self.store, name_to_lead, wants="name")
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
         await self.conn.send(
             f"call.{cc.ctrl_path}.lead", {"charId": target_id}
         )
-        return CommandResult(notification=f"Leading {name_to_lead}...")
+        return CommandResult(notification=f"Leading {display_name}...")
 
     async def handle_follow(self, name_to_follow, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_follow)
+            display_name = parse_name(self.store, name_to_follow, wants="name")
         except NameParseException as e:
             return CommandResult(success=False, notification=str(e))
         await self.conn.send(
             f"call.{cc.ctrl_path}.follow", {"charId": target_id}
         )
-        return CommandResult(notification=f"Following {name_to_follow}...")
+        return CommandResult(notification=f"Following {display_name}...")
 
     async def handle_profile(self, profile_name, cc: ControlledChar) -> CommandResult:
         if not profile_name:
