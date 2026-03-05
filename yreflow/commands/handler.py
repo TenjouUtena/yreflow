@@ -239,6 +239,21 @@ class CommandHandler:
             "function": self.handle_lookup
         }
 
+        patterns["stop_follow"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "stop follow", lambda cmd: ""),
+            ],
+            "function": self.handle_stop_follow,
+        }
+
+        patterns["stop_lead"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "stop lead", lambda cmd: ""),
+                (lambda cmd: cmd.startswith("stop lead "), lambda cmd: cmd[10:]),
+            ],
+            "function": self.handle_stop_lead,
+        }
+
         patterns["stop_lfrp"] = {
             "patterns": [
                 (lambda cmd: cmd.strip() == "stop lfrp", lambda cmd: ""),
@@ -550,6 +565,25 @@ class CommandHandler:
             f"call.{cc.ctrl_path}.follow", {"charId": target_id}
         )
         return CommandResult(notification=f"Following {display_name}...")
+
+    async def handle_stop_follow(self, content, cc: ControlledChar) -> CommandResult:
+        await self.conn.send(f"call.{cc.ctrl_path}.stopFollow")
+        return CommandResult(notification="Stopped following.")
+
+    async def handle_stop_lead(self, content, cc: ControlledChar) -> CommandResult:
+        params = {}
+        if content:
+            try:
+                target_id = parse_name(self.store, content)
+                display_name = parse_name(self.store, content, wants="name")
+            except NameParseException as e:
+                return CommandResult(success=False, notification=str(e))
+            params["charId"] = target_id
+            note = f"Stopped leading {display_name}."
+        else:
+            note = "Stopped leading."
+        await self.conn.send(f"call.{cc.ctrl_path}.stopLead", params or None)
+        return CommandResult(notification=note)
 
     async def handle_profile(self, profile_name, cc: ControlledChar) -> CommandResult:
         if not profile_name:

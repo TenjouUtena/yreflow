@@ -210,6 +210,27 @@ Request a character to come to your location.
 |---------|------|
 | Syntax  | `summon <name>` |
 
+### stop follow
+
+Stop following whoever you are currently following.
+
+| Aliases | `stop follow` |
+|---------|---------------|
+| Syntax  | `stop follow` |
+
+### stop lead
+
+Stop leading characters. With no argument, stops leading everyone. With a name, stops leading that specific character.
+
+| Aliases | `stop lead` |
+|---------|-------------|
+| Syntax  | `stop lead` or `stop lead <name>` |
+
+```
+stop lead
+stop lead Alice
+```
+
 ## Character Management
 
 ### profile
@@ -302,7 +323,7 @@ Clear the room view.
 
 ## Name Matching
 
-Commands that target a character (`whisper`, `page`, `address`, `look`, `lead`, `follow`, `join`, `summon`, `focus`, `unfocus`, `laston`) use fuzzy name matching:
+Commands that target a character (`whisper`, `page`, `address`, `look`, `lead`, `follow`, `join`, `summon`, `stop lead`, `focus`, `unfocus`, `laston`) use fuzzy name matching:
 
 1. Exact match (case-insensitive)
 2. Prefix match

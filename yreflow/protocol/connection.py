@@ -389,7 +389,7 @@ class WolferyConnection:
             )
             return
 
-        if style == "follow":
+        if style in ("follow", "stopFollow", "stopLead"):
             sender = (
                 frm.get("name", "") + " " + frm.get("surname", "")
             ).strip() or "Someone"
@@ -398,12 +398,27 @@ class WolferyConnection:
             ).strip() or "someone"
             cc = self.ctrl_chars.get(ctrl_id)
             char_id = cc.char_id if cc else ctrl_id
-            if frm.get("id") == char_id:
-                text = f"You are now following {target_name}."
-            elif t.get("id") == char_id:
-                text = f"{sender} is now following you."
-            else:
-                text = f"{sender} is now following {target_name}."
+            if style == "follow":
+                if frm.get("id") == char_id:
+                    text = f"You are now following {target_name}."
+                elif t.get("id") == char_id:
+                    text = f"{sender} is now following you."
+                else:
+                    text = f"{sender} is now following {target_name}."
+            elif style == "stopFollow":
+                if frm.get("id") == char_id:
+                    text = f"You stopped following {target_name}."
+                elif t.get("id") == char_id:
+                    text = f"{sender} stopped following you."
+                else:
+                    text = f"{sender} stopped following {target_name}."
+            else:  # stopLead
+                if frm.get("id") == char_id:
+                    text = f"You stopped leading {target_name}."
+                elif t.get("id") == char_id:
+                    text = f"{sender} stopped leading you."
+                else:
+                    text = f"{sender} stopped leading {target_name}."
             await self.event_bus.publish(
                 "notification", text=text, character=ctrl_id
             )
