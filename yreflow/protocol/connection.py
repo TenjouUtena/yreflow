@@ -389,6 +389,26 @@ class WolferyConnection:
             )
             return
 
+        if style == "follow":
+            sender = (
+                frm.get("name", "") + " " + frm.get("surname", "")
+            ).strip() or "Someone"
+            target_name = (
+                t.get("name", "") + " " + t.get("surname", "")
+            ).strip() or "someone"
+            cc = self.ctrl_chars.get(ctrl_id)
+            char_id = cc.char_id if cc else ctrl_id
+            if frm.get("id") == char_id:
+                text = f"You are now following {target_name}."
+            elif t.get("id") == char_id:
+                text = f"{sender} is now following you."
+            else:
+                text = f"{sender} is now following {target_name}."
+            await self.event_bus.publish(
+                "notification", text=text, character=ctrl_id
+            )
+            return
+
         # Track incoming directed messages from other characters
         cc = self.ctrl_chars.get(ctrl_id)
         char_id = cc.char_id if cc else ctrl_id
