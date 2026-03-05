@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from .protocol.events import EventBus
 from .protocol.model_store import ModelStore
 from .protocol.connection import WolferyConnection
+from .protocol.controlled_char import ControlledChar
 from .protocol.http_auth import obtain_token
 from .commands.handler import CommandHandler, CommandResult
 from .config import save_token, clear_token
@@ -56,16 +57,19 @@ class Controller:
         self.connection.auth_mode = "token"
         await self.connection.connect()
 
-    async def handle_command(self, command: str, character: str) -> CommandResult:
-        return await self.commands.process_command(command, character)
+    async def handle_command(self, command: str, ctrl_id: str) -> CommandResult:
+        cc = self.connection.get_controlled_char(ctrl_id)
+        if cc is None:
+            cc = ControlledChar(char_id=ctrl_id)
+        return await self.commands.process_command(command, cc)
 
     # --- Event handlers ---
 
     async def _on_message(self, event_name: str, message: dict, style: str, character: str, **kw) -> None:
         await self.ui.display_message(message, style, character)
 
-    async def _on_notification(self, event_name: str, text: str, **kw) -> None:
-        await self.ui.notify(text)
+    async def _on_notification(self, event_name: str, text: str, character: str | None = None, **kw) -> None:
+        await self.ui.notify(text, character=character)
 
     async def _on_room_changed(self, event_name: str, **kw) -> None:
         await self.ui.update_room()
@@ -81,18 +85,19 @@ class Controller:
             models = self.store.get(
                 f"core.player.{self.connection.player}.ctrls._value"
             )
-            current_ids = set()
+            current_ctrl_ids = set()
             for x in models:
                 try:
-                    current_ids.add(self.store.get(x["rid"])["id"])
-                except KeyError:
+                    cc = WolferyConnection._parse_ctrl_rid(x["rid"])
+                    current_ctrl_ids.add(cc.ctrl_id)
+                except (KeyError, IndexError):
                     continue
         except KeyError:
-            current_ids = set()
+            current_ctrl_ids = set()
 
         known = self.ui.get_known_characters()
-        for char_id in known - current_ids:
-            await self.ui.remove_character_tab(char_id)
+        for ctrl_id in known - current_ctrl_ids:
+            await self.ui.remove_character_tab(ctrl_id)
 
     async def _on_tab_needed(self, event_name: str, character: str, **kw) -> None:
         await self.ui.ensure_character_tab(character)

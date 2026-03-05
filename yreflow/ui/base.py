@@ -18,8 +18,8 @@ class UIProtocol(Protocol):
         """Display a system notification."""
         ...
 
-    async def notify(self, text: str) -> None:
-        """Show a transient notification."""
+    async def notify(self, text: str, character: str | None = None) -> None:
+        """Show a transient notification, optionally routed to a specific character tab."""
         ...
 
     async def update_room(self) -> None:

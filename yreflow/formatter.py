@@ -6,12 +6,23 @@ HTML tags replaced with Rich console markup equivalents.
 
 import re
 
-# Placeholder for links extracted before character-level formatting
+# Placeholders for content extracted before character-level formatting
 _LINK_PLACEHOLDER = "\x00LINK{}\x00"
+_ESC_PLACEHOLDER = "\x00ESC{}\x00"
 
 
 def format_message(msg_text: str) -> str:
     """Convert Wolfery markup in a message to Rich markup."""
+    # Extract <esc>...</esc> blocks — content inside should not be formatted
+    esc_blocks: list[str] = []
+
+    def _replace_esc(m):
+        idx = len(esc_blocks)
+        esc_blocks.append(m.group(1))
+        return _ESC_PLACEHOLDER.format(idx)
+
+    msg_text = re.sub(r"<esc>(.*?)</esc>", _replace_esc, msg_text, flags=re.DOTALL)
+
     # First pass: extract markdown links before character-level processing
     # so they don't interfere with Rich markup brackets
     links: list[tuple[str, str]] = []
@@ -23,6 +34,9 @@ def format_message(msg_text: str) -> str:
         return _LINK_PLACEHOLDER.format(idx)
 
     msg_text = re.sub(url_find, _replace_link, msg_text)
+
+    # Strip <nobr> tags (Rich/Textual has no non-breaking span support)
+    msg_text = re.sub(r"</?nobr>", "", msg_text)
 
     # Character-level formatting pass
     bold = False
@@ -130,5 +144,11 @@ def format_message(msg_text: str) -> str:
         placeholder = _LINK_PLACEHOLDER.format(i)
         safe_text = text.replace("[", "\\[")
         out = out.replace(placeholder, f"[underline cyan]{safe_text}[/underline cyan]")
+
+    # Restore <esc> blocks as plain escaped text (no formatting applied)
+    for i, raw in enumerate(esc_blocks):
+        placeholder = _ESC_PLACEHOLDER.format(i)
+        safe = raw.replace("[", "\\[")
+        out = out.replace(placeholder, safe)
 
     return out

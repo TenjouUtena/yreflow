@@ -12,6 +12,7 @@ from textual.widgets import Header, Footer, Collapsible
 
 from .widgets.message_view import MessageView
 from .widgets.input_bar import InputBar
+from .widgets.nav_panel import NavPanel
 from .widgets.watch_list import Sidebar
 from .widgets.character_bar import CharacterBar, CharacterButton, AddCharacterButton
 from .screens.character_select import CharacterSelectScreen
@@ -107,6 +108,7 @@ class WolferyCommands(Provider):
         ("Toggle spellcheck", "toggle_spellcheck", "Inline spellcheck highlighting (Ctrl+S)"),
         ("Toggle markup preview", "toggle_markup_preview", "Wolfery markup preview (Ctrl+T)"),
         ("Browse store", "open_store_browser", "Browse the live model store for debugging (Ctrl+D)"),
+        ("Toggle navigation", "toggle_nav_panel", "Open/close navigation panel (Ctrl+G)"),
     ]
 
     async def search(self, query: str) -> Hits:
@@ -167,6 +169,7 @@ class WolferyApp(App):
         Binding("ctrl+s", "toggle_spellcheck", "Spellcheck", priority=True),
         Binding("ctrl+t", "toggle_markup_preview", "Markup", priority=True),
         Binding("ctrl+d", "open_store_browser", "Store browser", priority=True),
+        Binding("ctrl+g", "toggle_nav_panel", "Navigation", priority=True),
     ]
 
     def __init__(self, controller=None, **kwargs):
@@ -175,6 +178,7 @@ class WolferyApp(App):
         self.active_character: str | None = None
         self.character_views: dict[str, dict] = {}
         self.unread_counts: dict[str, int] = {}
+        self.urgent_unreads: dict[str, bool] = {}
         self.character_order: list[str] = []
         self.unimportant_styles = _UNIMPORTANT_STYLES
 
@@ -244,15 +248,33 @@ class WolferyApp(App):
         input_bar.push_history(command)
 
         if self.controller and self.active_character:
+            # Nav mode: check if typed text matches an exit name
+            views = self.character_views.get(self.active_character, {})
+            nav_panel = views.get("nav_panel")
+            if nav_panel and nav_panel.display:
+                matched = nav_panel.find_exit_by_key(command)
+                if matched:
+                    cc = self.controller.connection.get_controlled_char(self.active_character)
+                    if cc:
+                        await self.controller.connection.send(
+                            f"call.{cc.ctrl_path}.useExit",
+                            {"exitId": matched["id"]},
+                        )
+                        return
+
             result = await self.controller.handle_command(command, self.active_character)
             if result and result.look_data:
                 self.push_screen(LookScreen(result.look_data))
             if result and result.open_profile_select:
+                cc = self.controller.connection.get_controlled_char(self.active_character)
+                if cc is None:
+                    from ..protocol.controlled_char import ControlledChar
+                    cc = ControlledChar(char_id=self.active_character)
                 self.push_screen(
                     ProfileSelectScreen(
                         self.controller.store,
                         self.controller.connection,
-                        self.active_character,
+                        cc,
                     ),
                     callback=self._on_profile_selected,
                 )
@@ -284,11 +306,16 @@ class WolferyApp(App):
         char_bar = self.query_one("#character-bar", CharacterBar)
         char_bar.set_active(character)
         self.unread_counts[character] = 0
-        char_bar.update_unread(character, 0)
+        self.urgent_unreads[character] = False
+        char_bar.update_unread(character, 0, False)
 
         # Switch input history to this character
         input_bar = self.query_one("#input-bar", InputBar)
         input_bar.set_active_character(character)
+
+        # Sync nav mode with new character's nav panel state
+        nav_panel = self.character_views[character].get("nav_panel")
+        input_bar.set_nav_mode(bool(nav_panel and nav_panel.display))
 
         # Rebuild sidebar for this character's room
         self._rebuild_sidebar()
@@ -355,6 +382,53 @@ class WolferyApp(App):
         if self.controller:
             self.push_screen(StoreBrowserScreen(self.controller.store))
 
+    async def action_toggle_nav_panel(self) -> None:
+        if not self.controller or not self.active_character:
+            return
+        views = self.character_views.get(self.active_character)
+        if not views:
+            return
+        input_bar = self.query_one("#input-bar", InputBar)
+        nav_panel = views.get("nav_panel")
+        if nav_panel is None:
+            # First open: mount the panel into the character container
+            nav_panel = NavPanel(id=f"nav-panel-{self.active_character}")
+            container = views["container"]
+            await container.mount(nav_panel)
+            views["nav_panel"] = nav_panel
+            char_id = self._resolve_char_id(self.active_character)
+            await nav_panel.refresh_data(self.controller.store, char_id)
+            input_bar.set_nav_mode(True)
+        elif nav_panel.display:
+            nav_panel.display = False
+            input_bar.set_nav_mode(False)
+        else:
+            nav_panel.display = True
+            char_id = self._resolve_char_id(self.active_character)
+            await nav_panel.refresh_data(self.controller.store, char_id)
+            input_bar.set_nav_mode(True)
+
+    async def on_nav_panel_exit_selected(self, event: NavPanel.ExitSelected) -> None:
+        """Handle directional navigation from the nav panel."""
+        if not self.controller or not self.active_character:
+            return
+        cc = self.controller.connection.get_controlled_char(self.active_character)
+        if cc is None:
+            return
+        await self.controller.connection.send(
+            f"call.{cc.ctrl_path}.useExit",
+            {"exitId": event.exit_id},
+        )
+
+    def on_nav_panel_close_requested(self, event: NavPanel.CloseRequested) -> None:
+        """Close the navigation panel on ESC."""
+        if self.active_character and self.active_character in self.character_views:
+            nav_panel = self.character_views[self.active_character].get("nav_panel")
+            if nav_panel:
+                nav_panel.display = False
+                input_bar = self.query_one("#input-bar", InputBar)
+                input_bar.set_nav_mode(False)
+
     def on_input_bar_recall_directed(self, event: InputBar.RecallDirected) -> None:
         """Handle ! recall: insert the nth directed contact into the input bar."""
         if not self.controller:
@@ -375,10 +449,11 @@ class WolferyApp(App):
         if not self.controller:
             return
         sidebar = self.query_one("#sidebar", Sidebar)
+        active_char_id = self._resolve_char_id(self.active_character) if self.active_character else None
         sidebar.rebuild(
             self.controller.store,
             self.controller.connection.player,
-            self.active_character,
+            active_char_id,
         )
         self._update_spellcheck_dictionary()
 
@@ -411,7 +486,8 @@ class WolferyApp(App):
         if not self.controller or not character:
             return None
         store = self.controller.store
-        focus = store.get_character_attribute(character, "focus", {})
+        char_id = self._resolve_char_id(character)
+        focus = store.get_character_attribute(char_id, "focus", {})
         if not isinstance(focus, dict):
             return None
         if sender_id in focus:
@@ -460,13 +536,21 @@ class WolferyApp(App):
             style, sender, msg_text, target_name,
             has_pose, is_ooc, timestamp, focus_color,
         )
-        view.write(line)
+        view.write(f"{line}")
 
         # Unread tracking for non-active characters
         if character != self.active_character and style not in self.unimportant_styles:
             self.unread_counts[character] = self.unread_counts.get(character, 0) + 1
-            char_bar = self.query_one("#character-bar", CharacterBar)
-            char_bar.update_unread(character, self.unread_counts[character])
+            if style in ("whisper", "message", "address"):
+                self.urgent_unreads[character] = True
+            self._update_unread_display(character)
+
+    def _update_unread_display(self, character: str) -> None:
+        """Push current unread count and urgency to the CharacterBar."""
+        char_bar = self.query_one("#character-bar", CharacterBar)
+        count = self.unread_counts.get(character, 0)
+        urgent = self.urgent_unreads.get(character, False)
+        char_bar.update_unread(character, count, urgent)
 
     def _format_timestamp(self, timestamp: str, focus_color: str | None) -> str:
         """Format the timestamp, applying focus background color if set."""
@@ -552,29 +636,57 @@ class WolferyApp(App):
             view = self.character_views[self.active_character]["main"]
             view.write(f"[yellow]{text}[/yellow]")
 
-    async def notify(self, text: str, **kwargs) -> None:
-        if self.active_character and self.active_character in self.character_views:
-            view = self.character_views[self.active_character]["main"]
+    async def notify(self, text: str, character: str | None = None, **kwargs) -> None:
+        target = character or self.active_character
+        if target and target in self.character_views:
+            view = self.character_views[target]["main"]
             view.write(f"[bold yellow]>> {text}[/bold yellow]")
+        # Track unread + urgent for notifications on non-active tab
+        if target and target != self.active_character and target in self.character_views:
+            self.unread_counts[target] = self.unread_counts.get(target, 0) + 1
+            if character is not None:
+                self.urgent_unreads[target] = True
+            self._update_unread_display(target)
 
     async def update_room(self) -> None:
         self._rebuild_sidebar()
+        # Refresh nav panel if open
+        if self.active_character and self.active_character in self.character_views:
+            nav_panel = self.character_views[self.active_character].get("nav_panel")
+            if nav_panel and nav_panel.display and self.controller:
+                char_id = self._resolve_char_id(self.active_character)
+                await nav_panel.refresh_data(self.controller.store, char_id)
 
     async def update_watch_list(self) -> None:
         self._rebuild_sidebar()
+
+    def _resolve_char_id(self, ctrl_id: str) -> str:
+        """Extract raw char_id from a ctrl_id via the connection registry."""
+        if self.controller:
+            cc = self.controller.connection.get_controlled_char(ctrl_id)
+            if cc:
+                return cc.char_id
+        return ctrl_id
 
     async def ensure_character_tab(self, character: str) -> None:
         if character in self.character_views:
             return
 
-        # Get character display name
+        # Get character display name (character param is ctrl_id)
         name = "Unknown"
         if self.controller:
             store = self.controller.store
-            name = store.get_character_attribute(character, "name")
-            surname = store.get_character_attribute(character, "surname")
+            cc = self.controller.connection.get_controlled_char(character)
+            char_id = cc.char_id if cc else character
+            name = store.get_character_attribute(char_id, "name")
+            surname = store.get_character_attribute(char_id, "surname")
             if surname:
                 name = f"{name} {surname}"
+            if cc and cc.is_puppet:
+                puppeteer_name = store.get_character_attribute(
+                    cc.puppeteer_id, "name"
+                )
+                name = f"{name} ({puppeteer_name}'s puppet)"
 
         # Create per-character message views
         main_view = MessageView(
@@ -613,6 +725,7 @@ class WolferyApp(App):
             "collapsible": collapsible,
         }
         self.unread_counts[character] = 0
+        self.urgent_unreads[character] = False
         self.character_order.append(character)
 
         # Add button to CharacterBar
@@ -639,6 +752,7 @@ class WolferyApp(App):
         # Clean up data structures
         del self.character_views[character]
         del self.unread_counts[character]
+        del self.urgent_unreads[character]
         self.character_order.remove(character)
 
         # If this was the active character, switch to another or show select
