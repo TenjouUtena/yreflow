@@ -15,28 +15,49 @@ if TYPE_CHECKING:
     from ...protocol.connection import WolferyConnection
 
 
-class CharacterOption(Static):
-    """A single character option in the select screen."""
+class _SelectableOption(Static):
+    """Base class for selectable options with keyboard navigation."""
 
     can_focus = True
 
     DEFAULT_CSS = """
-    CharacterOption {
+    _SelectableOption {
         height: auto;
         padding: 0 2;
         margin: 0 1;
         background: $surface;
     }
-    CharacterOption:hover {
+    _SelectableOption:hover {
         background: $accent 30%;
     }
-    CharacterOption:focus {
+    _SelectableOption:focus {
         background: $accent 50%;
     }
-    CharacterOption.active {
+    _SelectableOption.active {
         opacity: 60%;
     }
     """
+
+    def on_key(self, event) -> None:
+        if event.key in ("up", "down"):
+            options = [
+                o for o in self.screen.query("CharacterOption, PuppetOption")
+                if o.can_focus
+            ]
+            if self not in options:
+                return
+            idx = options.index(self)
+            if event.key == "up" and idx > 0:
+                options[idx - 1].focus()
+                options[idx - 1].scroll_visible()
+            elif event.key == "down" and idx < len(options) - 1:
+                options[idx + 1].focus()
+                options[idx + 1].scroll_visible()
+            event.stop()
+
+
+class CharacterOption(_SelectableOption):
+    """A single character option in the select screen."""
 
     class Selected(Message):
         def __init__(self, character_id: str, is_awake: bool) -> None:
@@ -69,20 +90,46 @@ class CharacterOption(Static):
         if event.key in ("enter", "space"):
             if not self.is_active:
                 self.post_message(self.Selected(self.character_id, self.is_awake))
-        elif event.key in ("up", "down"):
-            options = [
-                o for o in self.screen.query("CharacterOption") if o.can_focus
-            ]
-            if self not in options:
-                return
-            idx = options.index(self)
-            if event.key == "up" and idx > 0:
-                options[idx - 1].focus()
-                options[idx - 1].scroll_visible()
-            elif event.key == "down" and idx < len(options) - 1:
-                options[idx + 1].focus()
-                options[idx + 1].scroll_visible()
-            event.stop()
+        else:
+            super().on_key(event)
+
+
+class PuppetOption(_SelectableOption):
+    """A puppet option in the select screen."""
+
+    class Selected(Message):
+        def __init__(self, puppet_id: str, puppeteer_id: str) -> None:
+            super().__init__()
+            self.puppet_id = puppet_id
+            self.puppeteer_id = puppeteer_id
+
+    def __init__(
+        self,
+        puppet_id: str,
+        puppeteer_id: str,
+        display: str,
+        *,
+        is_active: bool = False,
+        **kwargs,
+    ) -> None:
+        super().__init__(display, markup=True, **kwargs)
+        self.puppet_id = puppet_id
+        self.puppeteer_id = puppeteer_id
+        self.is_active = is_active
+        if is_active:
+            self.can_focus = False
+            self.add_class("active")
+
+    def on_click(self) -> None:
+        if not self.is_active:
+            self.post_message(self.Selected(self.puppet_id, self.puppeteer_id))
+
+    def on_key(self, event) -> None:
+        if event.key in ("enter", "space"):
+            if not self.is_active:
+                self.post_message(self.Selected(self.puppet_id, self.puppeteer_id))
+        else:
+            super().on_key(event)
 
 
 class CharacterSelectScreen(ModalScreen):
@@ -180,11 +227,71 @@ class CharacterSelectScreen(ModalScreen):
             except (KeyError, AttributeError):
                 continue
 
+        # --- Puppets section ---
+        try:
+            puppets = self.store.get(f"core.player.{player}.puppets._value")
+        except KeyError:
+            puppets = []
+
+        if puppets:
+            await char_list.mount(
+                Static("\n[bold]Puppets[/bold]", markup=True)
+            )
+            active_ctrl_ids = {
+                cc.ctrl_id for cc in self.connection.ctrl_chars.values()
+            }
+            for puppet_entry in puppets:
+                try:
+                    puppet_data = self.store.get(puppet_entry["rid"])
+                    puppet_char = self.store.get(puppet_data["puppet"]["rid"])
+                    puppeteer_char = self.store.get(puppet_data["char"]["rid"])
+                    puppet_id = puppet_char["id"]
+                    puppeteer_id = puppeteer_char["id"]
+
+                    puppet_name = puppet_char.get("name", "?")
+                    puppet_surname = puppet_char.get("surname", "")
+                    puppeteer_name = puppeteer_char.get("name", "?")
+                    display = f"{puppet_name} {puppet_surname}".strip()
+                    display += f" [dim](via {puppeteer_name})[/dim]"
+
+                    ctrl_id = f"{puppet_id}_{puppeteer_id}"
+                    is_active = ctrl_id in active_ctrl_ids
+                    if is_active:
+                        display += " [green](active)[/green]"
+
+                    option = PuppetOption(
+                        puppet_id,
+                        puppeteer_id,
+                        display,
+                        is_active=is_active,
+                        id=f"puppetopt-{ctrl_id}",
+                    )
+                    await char_list.mount(option)
+                except (KeyError, AttributeError):
+                    continue
+
         focusable = [
-            o for o in self.query("CharacterOption") if o.can_focus
+            o for o in self.query("CharacterOption, PuppetOption")
+            if o.can_focus
         ]
         if focusable:
             focusable[0].focus()
+
+    async def on_puppet_option_selected(
+        self, event: PuppetOption.Selected
+    ) -> None:
+        """Take control of a puppet character."""
+        msg_id = await self.connection.send(
+            f"call.core.player.{self.connection.player}.controlPuppet",
+            {"charId": event.puppeteer_id, "puppetId": event.puppet_id},
+        )
+        # Chain wakeup after control succeeds -- puppet ctrl path needed
+        ctrl_path = f"core.char.{event.puppeteer_id}.puppet.{event.puppet_id}.ctrl"
+        self.connection.add_message_wait(
+            msg_id,
+            lambda _result, cp=ctrl_path: self._wakeup_phase_2(cp),
+        )
+        self.dismiss()
 
     async def on_character_option_selected(
         self, event: CharacterOption.Selected
@@ -198,17 +305,16 @@ class CharacterSelectScreen(ModalScreen):
         )
         # Phase 2: wakeup only if the character is sleeping
         if not event.is_awake:
+            ctrl_path = f"core.char.{char_id}.ctrl"
             self.connection.add_message_wait(
                 msg_id,
-                lambda _result, cid=char_id: self._wakeup_phase_2(cid),
+                lambda _result, cp=ctrl_path: self._wakeup_phase_2(cp),
             )
         self.dismiss()
 
-    async def _wakeup_phase_2(self, character_id: str) -> None:
-        """Send wakeup command after controlChar succeeds."""
-        await self.connection.send(
-            f"call.core.char.{character_id}.ctrl.wakeup"
-        )
+    async def _wakeup_phase_2(self, ctrl_path: str) -> None:
+        """Send wakeup command after controlChar/controlPuppet succeeds."""
+        await self.connection.send(f"call.{ctrl_path}.wakeup")
 
     def action_close_screen(self) -> None:
         self.dismiss()

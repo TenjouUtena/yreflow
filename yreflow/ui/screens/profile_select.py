@@ -13,6 +13,7 @@ from textual.message import Message
 if TYPE_CHECKING:
     from ...protocol.model_store import ModelStore
     from ...protocol.connection import WolferyConnection
+    from ...protocol.controlled_char import ControlledChar
 
 
 class ProfileOption(Static):
@@ -84,13 +85,13 @@ class ProfileSelectScreen(ModalScreen):
         self,
         store: ModelStore,
         connection: WolferyConnection,
-        character: str,
+        cc: ControlledChar,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.store = store
         self.connection = connection
-        self.character = character
+        self.cc = cc
 
     def compose(self):
         with Vertical(id="profile-container"):
@@ -102,7 +103,7 @@ class ProfileSelectScreen(ModalScreen):
         profile_list = self.query_one("#profile-list", VerticalScroll)
         try:
             profiles = self.store.get(
-                f"core.char.{self.character}.profiles._value"
+                f"core.char.{self.cc.char_id}.profiles._value"
             )
         except KeyError:
             await profile_list.mount(
@@ -132,7 +133,7 @@ class ProfileSelectScreen(ModalScreen):
     ) -> None:
         """Switch to the selected profile."""
         await self.connection.send(
-            f"call.core.char.{self.character}.ctrl.useProfile",
+            f"call.{self.cc.ctrl_path}.useProfile",
             {"profileId": event.profile_id, "safe": True},
         )
         self.dismiss(event.profile_name)

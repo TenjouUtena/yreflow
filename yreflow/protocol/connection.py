@@ -39,6 +39,7 @@ _DEFAULT_SUBSCRIPTIONS = [
 from .state import State
 from .model_store import ModelStore
 from .events import EventBus
+from .controlled_char import ControlledChar
 
 
 class WolferyConnection:
@@ -64,6 +65,7 @@ class WolferyConnection:
         self.player: str | None = None
         self.subscribe_watches = False
         self.directed_contacts: list[DirectedContact] = []
+        self.ctrl_chars: dict[str, ControlledChar] = {}
 
         # Register model watches
         self.store.add_watch(r"core\.player.*", self._on_player_event)
@@ -73,6 +75,7 @@ class WolferyConnection:
         self.store.add_watch(r"note\.player\.\w+\.watches", self._on_watches_change)
         self.store.add_watch(r"core\.chars\.awake", self._on_watches_change)
         self.store.add_watch(r"core\.player\.\w+\.ctrls\.remove", self._on_tabs_change)
+        self.store.add_watch(r"core\.player\.\w+\.controlLost", self._on_control_lost)
 
     def set_credentials(self, username: str, password: str) -> None:
         """Set username/password for password-based auth."""
@@ -92,12 +95,37 @@ class WolferyConnection:
     def add_message_wait(self, msg_id: int, function) -> None:
         self.message_waits[msg_id] = {"function": function}
 
-    async def look_at(self, who: str, whoami: str):
-        await self.send(f"subscribe.core.char.{who}.info")
-        return await self.send(f"call.core.char.{whoami}.ctrl.look", {"charid": who})
+    @staticmethod
+    def _parse_ctrl_rid(rid: str) -> ControlledChar:
+        """Parse a ctrls RID into a ControlledChar.
 
-    async def stop_look_at(self, whoami: str):
-        return await self.send(f"call.core.char.{whoami}.ctrl.look", {"charid": whoami})
+        Regular char RID: core.char.<charId>
+        Puppet RID:       core.char.<puppeteerId>.puppet.<puppetId>.ctrl
+        """
+        parts = rid.split(".")
+        if ".puppet." in rid and len(parts) >= 5:
+            puppeteer_id = parts[2]
+            puppet_id = parts[4]
+            return ControlledChar(char_id=puppet_id, puppeteer_id=puppeteer_id)
+        return ControlledChar(char_id=parts[2])
+
+    def get_controlled_char(self, ctrl_id: str) -> ControlledChar | None:
+        """Look up a ControlledChar by its ctrl_id."""
+        return self.ctrl_chars.get(ctrl_id)
+
+    def _char_id_to_ctrl_id(self, char_id: str) -> str:
+        """Map a raw charId to its ctrl_id. Falls back to charId if not found."""
+        for cc in self.ctrl_chars.values():
+            if cc.char_id == char_id:
+                return cc.ctrl_id
+        return char_id
+
+    async def look_at(self, who: str, cc: ControlledChar):
+        await self.send(f"subscribe.core.char.{who}.info")
+        return await self.send(f"call.{cc.ctrl_path}.look", {"charid": who})
+
+    async def stop_look_at(self, cc: ControlledChar):
+        return await self.send(f"call.{cc.ctrl_path}.look", {"charid": cc.char_id})
 
     def push_directed_contact(
         self, char_ids: list[str], names: list[str], prefix: str
@@ -127,21 +155,23 @@ class WolferyConnection:
             one_hour_ago = datetime.now() - timedelta(hours=1)
             timestamp = int(one_hour_ago.timestamp() * 1000)
             for rid in payload:
-                character = rid["rid"].split(".")[2]
-                await self.event_bus.publish("character.tab.needed", character=character)
-                await self.send(f"subscribe.core.char.{character}.nodes")
-                f = await self.send(
-                    "call.log.events.get",
-                    {"charId": character, "startTime": timestamp},
-                )
+                cc = self._parse_ctrl_rid(rid["rid"])
+                self.ctrl_chars[cc.ctrl_id] = cc
+                await self.event_bus.publish("character.tab.needed", character=cc.ctrl_id)
+                await self.send(f"subscribe.{cc.char_path}.nodes")
+                log_params = {"charId": cc.char_id, "startTime": timestamp}
+                if cc.is_puppet:
+                    log_params["puppeteerId"] = cc.puppeteer_id
+                f = await self.send("call.log.events.get", log_params)
                 self.add_message_wait(
                     f,
-                    lambda e, ch=character: self._process_backlog(ch, e),
+                    lambda e, cid=cc.ctrl_id: self._process_backlog(cid, e),
                 )
         elif path.endswith("ctrls.add") and isinstance(payload, dict) and "rid" in payload:
-            character = payload["rid"].split(".")[2]
-            await self.event_bus.publish("character.tab.needed", character=character)
-            await self.send(f"subscribe.core.char.{character}.nodes")
+            cc = self._parse_ctrl_rid(payload["rid"])
+            self.ctrl_chars[cc.ctrl_id] = cc
+            await self.event_bus.publish("character.tab.needed", character=cc.ctrl_id)
+            await self.send(f"subscribe.{cc.char_path}.nodes")
 
     async def _process_backlog(self, character: str, backlog) -> None:
         for e in backlog.get("events", []):
@@ -150,6 +180,7 @@ class WolferyConnection:
     async def _on_looked_at(self, path: str, payload) -> None:
         model_parts = path.split(".")
         character = model_parts[3]
+        ctrl_id = self._char_id_to_ctrl_id(character)
         for who_looked in payload:
             fname = self.store.get_character_attribute(who_looked, "name")
             sname = self.store.get_character_attribute(who_looked, "surname")
@@ -157,7 +188,7 @@ class WolferyConnection:
             await self.event_bus.publish(
                 "notification",
                 text=f"{fname} {sname} looked at {myname}.",
-                character=character,
+                character=ctrl_id,
             )
 
     async def _on_inroom_change(self, path: str, payload) -> None:
@@ -166,7 +197,22 @@ class WolferyConnection:
     async def _on_watches_change(self, path: str, payload) -> None:
         await self.event_bus.publish("watches.changed")
 
+    async def _on_control_lost(self, path: str, payload) -> None:
+        """Handle controlLost player event (another player took over a puppet)."""
+        puppet_name = ""
+        if isinstance(payload, dict):
+            puppet = payload.get("puppet", {})
+            puppet_name = puppet.get("name", "")
+            if puppet.get("surname"):
+                puppet_name += f" {puppet['surname']}"
+        text = f"Control of {puppet_name} lost." if puppet_name else "Puppet control lost."
+        await self.event_bus.publish("notification", text=text)
+
     async def _on_tabs_change(self, path: str, payload) -> None:
+        # Clean up ctrl_chars for removed characters
+        if isinstance(payload, dict) and "rid" in payload:
+            removed = self._parse_ctrl_rid(payload["rid"])
+            self.ctrl_chars.pop(removed.ctrl_id, None)
         await self.event_bus.publish("characters.changed")
 
     # --- WebSocket connection ---
@@ -304,8 +350,12 @@ class WolferyConnection:
                 handled = True
 
             if evt.endswith("ctrl.out"):
-                character = evt.split(".")[2]
-                await self._handle_output(j["data"], character)
+                # Parse the event path to extract ctrl_id
+                # Regular: core.char.<id>.ctrl.out
+                # Puppet:  core.char.<puppeteerId>.puppet.<puppetId>.ctrl.out
+                ctrl_rid = evt.removesuffix(".out")
+                cc = self._parse_ctrl_rid(ctrl_rid)
+                await self._handle_output(j["data"], cc.ctrl_id)
                 handled = True
 
         if self.state == State.SUBSCRIBE:
@@ -313,7 +363,7 @@ class WolferyConnection:
             for s in self.default_subscriptions:
                 await self.send(s)
 
-    async def _handle_output(self, j: dict, character: str) -> None:
+    async def _handle_output(self, j: dict, ctrl_id: str) -> None:
         frm = j.get("char", {"name": "", "id": ""})
         msg = j.get("msg", "")
         t = j.get("target", {"name": "", "id": ""})
@@ -322,12 +372,14 @@ class WolferyConnection:
 
         if style in ("summon", "join"):
             await self.event_bus.publish(
-                "notification", text="Summon/join received", character=character
+                "notification", text="Summon/join received", character=ctrl_id
             )
             return
 
         # Track incoming directed messages from other characters
-        if style in _DIRECTED_PREFIX and frm.get("id") != character:
+        cc = self.ctrl_chars.get(ctrl_id)
+        char_id = cc.char_id if cc else ctrl_id
+        if style in _DIRECTED_PREFIX and frm.get("id") != char_id:
             sender_id = frm.get("id", "")
             sender_name = (
                 frm.get("name", "") + " " + frm.get("surname", "")
@@ -338,7 +390,7 @@ class WolferyConnection:
                 )
 
         await self.event_bus.publish(
-            "message.received", message=output, style=style, character=character
+            "message.received", message=output, style=style, character=ctrl_id
         )
 
     async def send(self, method: str = "", params: dict | None = None) -> int:
