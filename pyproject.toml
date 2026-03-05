@@ -30,6 +30,10 @@ dependencies = [
     "pyspellchecker>=0.8",
 ]
 
+[project.optional-dependencies]
+spellcheck-macos = ["pyobjc-framework-Cocoa>=10.0"]
+spellcheck-enchant = ["pyenchant>=3.2"]
+
 [project.urls]
 Homepage = "https://github.com/TenjouUtena/yreflow"
 Repository = "https://github.com/TenjouUtena/yreflow"
