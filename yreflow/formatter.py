@@ -86,6 +86,15 @@ def format_message(
 
     msg_text = re.sub(url_find, _replace_link, msg_text)
 
+    # Second pass: extract bare URLs not already wrapped in markdown link syntax
+    def _replace_bare_url(m):
+        idx = len(links)
+        bare = m.group(0)
+        links.append((bare, bare))
+        return _LINK_PLACEHOLDER.format(idx)
+
+    msg_text = re.sub(r"https?://[^\s<>\"'\])]*", _replace_bare_url, msg_text)
+
     # Notify caller about every URL we found
     if on_url and links:
         for text, url in links:
