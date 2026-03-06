@@ -14,6 +14,7 @@ from lark.exceptions import UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
 # Placeholders for content extracted before character-level formatting
 _LINK_PLACEHOLDER = "\x00LINK{}\x00"
 _ESC_PLACEHOLDER = "\x00ESC{}\x00"
+_CODE_PLACEHOLDER = "\x00CODE{}\x00"
 
 
 def convert_string(
@@ -73,6 +74,16 @@ def format_message(
         return _ESC_PLACEHOLDER.format(idx)
 
     msg_text = re.sub(r"<esc>(.*?)</esc>", _replace_esc, msg_text, flags=re.DOTALL)
+
+    # Extract `code` spans — content inside should not be formatted, rendered in goldenrod
+    code_blocks: list[str] = []
+
+    def _replace_code(m):
+        idx = len(code_blocks)
+        code_blocks.append(m.group(1))
+        return _CODE_PLACEHOLDER.format(idx)
+
+    msg_text = re.sub(r"`(.*?)`", _replace_code, msg_text, flags=re.DOTALL)
 
     # First pass: extract markdown links before character-level processing
     # so they don't interfere with Rich markup brackets
@@ -162,24 +173,24 @@ def format_message(
         # Superscript: ++text++ (approximated as dim in terminal)
         if ch == "+" and next_ch == "+" and not superscript:
             superscript = True
-            out += "[dim]^"
+            out += ""
             skips.add(c + 1)
             continue
         if ch == "+" and next_ch == "+" and superscript:
             superscript = False
-            out += "[/dim]"
+            out += ""
             skips.add(c + 1)
             continue
 
         # Subscript: --text-- (approximated as dim in terminal)
         if ch == "-" and next_ch == "-" and not subscript:
             subscript = True
-            out += "[dim]_"
+            out += ""
             skips.add(c + 1)
             continue
         if ch == "-" and next_ch == "-" and subscript:
             subscript = False
-            out += "[/dim]"
+            out += ""
             skips.add(c + 1)
             continue
 
@@ -215,6 +226,12 @@ def format_message(
         placeholder = _LINK_PLACEHOLDER.format(i)
         safe_text = text.replace("[", "\\[")
         out = out.replace(placeholder, f"[underline cyan]{safe_text}[/underline cyan]")
+
+    # Restore `code` spans as goldenrod escaped text (no formatting applied)
+    for i, raw in enumerate(code_blocks):
+        placeholder = _CODE_PLACEHOLDER.format(i)
+        safe = raw.replace("[", "\\[")
+        out = out.replace(placeholder, f"[dark_goldenrod]{safe}[/dark_goldenrod]")
 
     # Restore <esc> blocks as plain escaped text (no formatting applied)
     for i, raw in enumerate(esc_blocks):
