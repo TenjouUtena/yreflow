@@ -9,6 +9,8 @@ from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Static, TabbedContent, TabPane
 
+from collections.abc import Callable
+
 from ...formatter import format_message
 
 # Maps Textual key names to standard MUD compass nav values.
@@ -209,9 +211,14 @@ class NavPanel(Widget):
     class CloseRequested(Message):
         """Posted when the user presses ESC to close the panel."""
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(
+        self,
+        on_url: Callable[[str, str], None] | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
         self._exits: list[dict] = []
+        self._on_url = on_url
 
     def compose(self):
         with Horizontal(classes="nav-panel-inner"):
@@ -305,7 +312,7 @@ class NavPanel(Widget):
             )
             if room_desc:
                 await room_pane.mount(
-                    Static(format_message(room_desc), markup=True)
+                    Static(format_message(room_desc, on_url=self._on_url), markup=True)
                 )
             for i, area in enumerate(areas):
                 area_pane = TabPane(area["name"], id=f"nav-tab-area-{i}")
@@ -317,7 +324,7 @@ class NavPanel(Widget):
                 about = area.get("about", "")
                 if about:
                     await area_pane.mount(
-                        Static(format_message(about), markup=True)
+                        Static(format_message(about, on_url=self._on_url), markup=True)
                     )
                 if not area.get("pop") and not about:
                     await area_pane.mount(
@@ -329,7 +336,7 @@ class NavPanel(Widget):
             )
             if room_desc:
                 await left.mount(
-                    Static(format_message(room_desc), markup=True)
+                    Static(format_message(room_desc, on_url=self._on_url), markup=True)
                 )
 
         # Update compass rose

@@ -20,6 +20,7 @@ from .screens.look_screen import LookScreen
 from .screens.login_screen import LoginScreen
 from .screens.profile_select import ProfileSelectScreen
 from .screens.store_browser import StoreBrowserScreen
+from .screens.url_screen import UrlScreen
 from ..config import load_config, save_preference
 from ..formatter import format_message
 
@@ -99,7 +100,8 @@ class WolferyCommands(Provider):
     """Command palette entries for yreflow actions."""
 
     COMMANDS = [
-        ("Toggle activity panel", "toggle_unimportant", "Show/hide the activity section (Ctrl+U)"),
+        ("Toggle activity panel", "toggle_unimportant", "Show/hide the activity section (F3)"),
+        ("Recent URLs", "show_urls", "Show recently captured URLs (Ctrl+U)"),
         ("Toggle sidebar mode", "toggle_watch_mode", "Switch sidebar between compact and full (Ctrl+W)"),
         ("Next character", "next_character", "Switch to the next character tab (Ctrl+N)"),
         ("Previous character", "prev_character", "Switch to the previous character tab (Ctrl+P)"),
@@ -160,7 +162,8 @@ class WolferyApp(App):
     """
     BINDINGS = [
         Binding("ctrl+c", "quit", "Quit", priority=True),
-        Binding("ctrl+u", "toggle_unimportant", "Toggle activity", priority=True),
+        Binding("ctrl+u", "show_urls", "URLs", priority=True),
+        Binding("f3", "toggle_unimportant", "Toggle activity", priority=True),
         Binding("ctrl+w", "toggle_watch_mode", "Sidebar: compact/full", priority=True),
         Binding("ctrl+p", "prev_character", "Prev char", priority=True),
         Binding("ctrl+n", "next_character", "Next char", priority=True),
@@ -264,7 +267,7 @@ class WolferyApp(App):
 
             result = await self.controller.handle_command(command, self.active_character)
             if result and result.look_data:
-                self.push_screen(LookScreen(result.look_data))
+                self.push_screen(LookScreen(result.look_data, on_url=self._publish_url))
             if result and result.open_profile_select:
                 cc = self.controller.connection.get_controlled_char(self.active_character)
                 if cc is None:
@@ -382,6 +385,15 @@ class WolferyApp(App):
         if self.controller:
             self.push_screen(StoreBrowserScreen(self.controller.store))
 
+    def action_show_urls(self) -> None:
+        if self.controller:
+            self.push_screen(UrlScreen(self.controller.url_catcher.recent(20)))
+
+    def _publish_url(self, display_text: str, url: str) -> None:
+        """Synchronous callback for format_message — captures the URL directly."""
+        if self.controller:
+            self.controller.url_catcher.capture(display_text, url)
+
     async def action_toggle_nav_panel(self) -> None:
         if not self.controller or not self.active_character:
             return
@@ -392,7 +404,7 @@ class WolferyApp(App):
         nav_panel = views.get("nav_panel")
         if nav_panel is None:
             # First open: mount the panel into the character container
-            nav_panel = NavPanel(id=f"nav-panel-{self.active_character}")
+            nav_panel = NavPanel(on_url=self._publish_url, id=f"nav-panel-{self.active_character}")
             container = views["container"]
             await container.mount(nav_panel)
             views["nav_panel"] = nav_panel
@@ -513,7 +525,7 @@ class WolferyApp(App):
 
         sender = message["frm"].get("name", "???")
         sender_id = message["frm"].get("id", "")
-        msg_text = format_message(message.get("msg", ""))
+        msg_text = format_message(message.get("msg", ""), on_url=self._publish_url)
         j = message.get("j", {})
         target = message.get("t", {})
         target_first_name = target.get("name", "")
@@ -768,7 +780,7 @@ class WolferyApp(App):
         return set(self.character_views.keys())
 
     async def display_look(self, data: dict) -> None:
-        self.push_screen(LookScreen(data))
+        self.push_screen(LookScreen(data, on_url=self._publish_url))
 
     async def log_raw(self, text: str) -> None:
         # Debug logging -- no-op for now
