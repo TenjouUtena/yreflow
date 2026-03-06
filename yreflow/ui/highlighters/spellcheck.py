@@ -1,10 +1,17 @@
 """Inline spellcheck highlighter for the input bar.
 
-Uses pyspellchecker to identify misspelled words and underlines them
-in red.  Lazy-loads the checker on first use to avoid startup cost.
+Uses a tiered backend system for spell checking:
+1. macOS NSSpellChecker (via PyObjC) — respects system locale
+2. pyenchant (cross-platform) — supports locale-specific dictionaries
+3. pyspellchecker (fallback) — American English only
+
+Lazy-loads the checker on first use to avoid startup cost.
 """
 
+import locale
+import os
 import re
+import sys
 
 from rich.highlighter import Highlighter
 from rich.text import Text
@@ -27,6 +34,103 @@ _CMD_PREFIX_RE = re.compile(
 _MISSPELLED_STYLE = "underline red"
 
 
+# ---------------------------------------------------------------------------
+# Spell-check backends
+# ---------------------------------------------------------------------------
+
+class _NSSpellBackend:
+    """macOS native spellchecker via PyObjC. Respects system locale."""
+
+    def __init__(self):
+        from AppKit import NSSpellChecker  # noqa: F401
+
+        self._checker = NSSpellChecker.sharedSpellChecker()
+
+    def unknown(self, words: list[str]) -> set[str]:
+        checker = self._checker
+        result = set()
+        for word in words:
+            rng = checker.checkSpellingOfString_startingAt_(word, 0)
+            if rng.length > 0:
+                result.add(word)
+        return result
+
+    def add_words(self, words: set[str]) -> None:
+        for word in words:
+            self._checker.learnWord_(word)
+
+
+class _EnchantBackend:
+    """Cross-platform spellchecker via pyenchant. Supports locale dictionaries."""
+
+    def __init__(self):
+        import enchant  # noqa: F401
+
+        lang = self._detect_locale()
+        try:
+            self._dict = enchant.Dict(lang)
+        except enchant.errors.DictNotFoundError:
+            # Fall back to plain "en" or whatever is available
+            self._dict = enchant.Dict("en")
+
+    @staticmethod
+    def _detect_locale() -> str:
+        """Determine the best locale tag for enchant (e.g. 'en_GB')."""
+        # Explicit env override
+        lang = os.environ.get("LANG", "")
+        if lang:
+            tag = lang.split(".")[0]  # strip encoding e.g. en_GB.UTF-8 -> en_GB
+            if tag:
+                return tag
+        # System locale
+        loc = locale.getlocale()[0]
+        if loc:
+            return loc
+        return "en_US"
+
+    def unknown(self, words: list[str]) -> set[str]:
+        check = self._dict.check
+        return {w for w in words if not check(w)}
+
+    def add_words(self, words: set[str]) -> None:
+        add = self._dict.add
+        for word in words:
+            add(word)
+
+
+class _PySpellBackend:
+    """Fallback using pyspellchecker (American English only)."""
+
+    def __init__(self):
+        from spellchecker import SpellChecker
+
+        self._checker = SpellChecker()
+
+    def unknown(self, words: list[str]) -> set[str]:
+        return self._checker.unknown(words)
+
+    def add_words(self, words: set[str]) -> None:
+        self._checker.word_frequency.load_words(words)
+
+
+def _create_backend():
+    """Try backends in priority order and return the first that works."""
+    if sys.platform == "darwin":
+        try:
+            return _NSSpellBackend()
+        except ImportError:
+            pass
+    try:
+        return _EnchantBackend()
+    except ImportError:
+        pass
+    return _PySpellBackend()
+
+
+# ---------------------------------------------------------------------------
+# Highlighter
+# ---------------------------------------------------------------------------
+
 class SpellCheckHighlighter(Highlighter):
     """Highlights misspelled words with an underline.
 
@@ -35,26 +139,24 @@ class SpellCheckHighlighter(Highlighter):
     """
 
     def __init__(self) -> None:
-        self._checker = None  # lazy-loaded SpellChecker
+        self._checker = None  # lazy-loaded backend
         self._custom_words: set[str] = set()
         # Cache: plain text -> list of (start, end) spans
         self._cache_key: str = ""
         self._cache_spans: list[tuple[int, int]] = []
 
     def _ensure_checker(self):
-        """Lazy-load spellchecker on first use."""
+        """Lazy-load spellcheck backend on first use."""
         if self._checker is None:
-            from spellchecker import SpellChecker
-
-            self._checker = SpellChecker()
+            self._checker = _create_backend()
             if self._custom_words:
-                self._checker.word_frequency.load_words(self._custom_words)
+                self._checker.add_words(self._custom_words)
 
     def update_custom_words(self, words: set[str]) -> None:
         """Replace the custom dictionary (character names, game terms, etc.)."""
         self._custom_words = {w.lower() for w in words if w}
         if self._checker is not None:
-            self._checker.word_frequency.load_words(self._custom_words)
+            self._checker.add_words(self._custom_words)
         # Invalidate cache since known-words changed
         self._cache_key = ""
 

@@ -1,6 +1,6 @@
 [project]
 name = "yreflow"
-version = "0.1.4"
+version = "0.1.5"
 authors = [
     { name="Kredden", email="kredden@proactiveapathy.com" }
 ]
@@ -28,7 +28,12 @@ dependencies = [
     "websockets>=16.0",
     "httpx>=0.27",
     "pyspellchecker>=0.8",
+    "unicodeitplus>=0.3.1",
 ]
+
+[project.optional-dependencies]
+spellcheck-macos = ["pyobjc-framework-Cocoa>=10.0"]
+spellcheck-enchant = ["pyenchant>=3.2"]
 
 [project.urls]
 Homepage = "https://github.com/TenjouUtena/yreflow"

@@ -5,14 +5,65 @@ HTML tags replaced with Rich console markup equivalents.
 """
 
 import re
+from collections.abc import Callable
+from typing import Literal
+
+from unicodeitplus import replace as upreplace
+from lark.exceptions import UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
 
 # Placeholders for content extracted before character-level formatting
 _LINK_PLACEHOLDER = "\x00LINK{}\x00"
 _ESC_PLACEHOLDER = "\x00ESC{}\x00"
 
 
-def format_message(msg_text: str) -> str:
-    """Convert Wolfery markup in a message to Rich markup."""
+def convert_string(
+        text: str,
+        converter: Literal['^','_']
+) -> str:
+    """
+    Helper function converting latex using unicodeitplus
+    """
+    newstr = ""
+    for char in text:
+        try:
+            unicode = upreplace(f"{converter}{char}")
+        except (UnexpectedCharacters, UnexpectedEOF, UnexpectedToken):
+            newstr += char
+            continue
+        if len(unicode) == 1:
+            newstr += unicode
+        else:
+            newstr += char
+    return newstr
+
+def superscript_string(
+        text: str
+) -> str:
+    """
+    Convery a string to unicode superscript for available unicode characters
+    """
+    return convert_string(text, "^")
+
+def subscript_string(
+        text: str
+) -> str:
+    """
+    Convery a string to unicode superscript for available unicode characters
+    """
+    return convert_string(text, "_")
+
+
+
+
+def format_message(
+    msg_text: str,
+    on_url: Callable[[str, str], None] | None = None,
+) -> str:
+    """Convert Wolfery markup in a message to Rich markup.
+
+    If *on_url* is provided it is called with ``(display_text, url)`` for every
+    markdown-style link found in *msg_text*.
+    """
     # Extract <esc>...</esc> blocks — content inside should not be formatted
     esc_blocks: list[str] = []
 
@@ -34,6 +85,20 @@ def format_message(msg_text: str) -> str:
         return _LINK_PLACEHOLDER.format(idx)
 
     msg_text = re.sub(url_find, _replace_link, msg_text)
+
+    # Second pass: extract bare URLs not already wrapped in markdown link syntax
+    def _replace_bare_url(m):
+        idx = len(links)
+        bare = m.group(0)
+        links.append((bare, bare))
+        return _LINK_PLACEHOLDER.format(idx)
+
+    msg_text = re.sub(r"https?://[^\s<>\"'\])]*", _replace_bare_url, msg_text)
+
+    # Notify caller about every URL we found
+    if on_url and links:
+        for text, url in links:
+            on_url(text, url)
 
     # Strip <nobr> tags (Rich/Textual has no non-breaking span support)
     msg_text = re.sub(r"</?nobr>", "", msg_text)
@@ -134,6 +199,12 @@ def format_message(msg_text: str) -> str:
         if ch == "[":
             out += "\\["
             continue
+        
+        if superscript:
+            ch = superscript_string(ch)
+
+        if subscript:
+            ch = subscript_string(ch)
 
         out += ch
 

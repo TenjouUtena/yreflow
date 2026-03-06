@@ -7,6 +7,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Static, Button, TabbedContent, TabPane
 from textual.containers import Vertical, VerticalScroll
 
+from collections.abc import Callable
+
 from ...formatter import format_message
 
 
@@ -66,9 +68,15 @@ class LookScreen(ModalScreen):
         Binding("escape", "close_screen", "Close"),
     ]
 
-    def __init__(self, data: dict, **kwargs) -> None:
+    def __init__(
+        self,
+        data: dict,
+        on_url: Callable[[str, str], None] | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
         self.data = data
+        self._on_url = on_url
 
     def compose(self):
         with Vertical(id="look-container"):
@@ -117,7 +125,7 @@ class LookScreen(ModalScreen):
         desc = self.data.get("desc", "")
         if desc:
             await container.mount(
-                Static(format_message(desc), classes="look-text", markup=True)
+                Static(format_message(desc, on_url=self._on_url), classes="look-text", markup=True)
             )
 
         exits = self.data.get("exits", [])
@@ -147,7 +155,7 @@ class LookScreen(ModalScreen):
         about = area.get("about", "")
         if about:
             await container.mount(
-                Static(format_message(about), classes="look-text", markup=True)
+                Static(format_message(about, on_url=self._on_url), classes="look-text", markup=True)
             )
         if not area.get("pop") and not about:
             await container.mount(
@@ -158,7 +166,7 @@ class LookScreen(ModalScreen):
         desc = self.data.get("desc", "")
         if desc:
             await body.mount(
-                Static(format_message(desc), classes="look-text", markup=True)
+                Static(format_message(desc, on_url=self._on_url), classes="look-text", markup=True)
             )
 
         about = self.data.get("about", "")
@@ -167,7 +175,7 @@ class LookScreen(ModalScreen):
                 Static("About", classes="look-section-title", markup=True)
             )
             await body.mount(
-                Static(format_message(about), classes="look-text", markup=True)
+                Static(format_message(about, on_url=self._on_url), classes="look-text", markup=True)
             )
 
         tags = self.data.get("tags", [])

@@ -9,6 +9,8 @@ from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Static, TabbedContent, TabPane
 
+from collections.abc import Callable
+
 from ...formatter import format_message
 
 # Maps Textual key names to standard MUD compass nav values.
@@ -209,9 +211,14 @@ class NavPanel(Widget):
     class CloseRequested(Message):
         """Posted when the user presses ESC to close the panel."""
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(
+        self,
+        on_url: Callable[[str, str], None] | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
         self._exits: list[dict] = []
+        self._on_url = on_url
 
     def compose(self):
         with Horizontal(classes="nav-panel-inner"):
@@ -234,38 +241,31 @@ class NavPanel(Widget):
             event.prevent_default()
             event.stop()
 
-    async def refresh_data(self, store, char_id: str) -> None:
+    async def refresh_data(self, store, char_path: str) -> None:
         """Pull room/exit/area data from the store and update the panel."""
-        try:
-            room_pointer = store.get(
-                f"core.char.{char_id}.owned.inRoom"
-            )["rid"]
-            room_id = room_pointer.split(".")[2]
-        except KeyError:
+        room_pointer = store.get_room_rid(char_path)
+        if not room_pointer:
             return
+        room_id = room_pointer.split(".")[2]
 
         room_name = store.get_room_attribute(room_id, "name") or "Unknown Room"
         room_desc = store.get_room_attribute(room_id, "desc") or ""
 
         # Gather exits with icon and nav fields
         exits = []
-        try:
-            room_exits = store.get(room_pointer + ".exits._value")
-            for e in room_exits:
-                try:
-                    exit_model = store.get(e["rid"])
-                    keys = exit_model.get("keys", {}).get("data", [])
-                    exits.append({
-                        "id": exit_model.get("id", ""),
-                        "name": exit_model.get("name", "?"),
-                        "keys": keys,
-                        "icon": exit_model.get("icon", ""),
-                        "nav": exit_model.get("nav", ""),
-                    })
-                except KeyError:
-                    continue
-        except KeyError:
-            pass
+        for e in store.get_room_exits(room_pointer):
+            try:
+                exit_model = store.get(e["rid"])
+                keys = exit_model.get("keys", {}).get("data", [])
+                exits.append({
+                    "id": exit_model.get("id", ""),
+                    "name": exit_model.get("name", "?"),
+                    "keys": keys,
+                    "icon": exit_model.get("icon", ""),
+                    "nav": exit_model.get("nav", ""),
+                })
+            except KeyError:
+                continue
         self._exits = exits
 
         # Gather area hierarchy
@@ -312,7 +312,7 @@ class NavPanel(Widget):
             )
             if room_desc:
                 await room_pane.mount(
-                    Static(format_message(room_desc), markup=True)
+                    Static(format_message(room_desc, on_url=self._on_url), markup=True)
                 )
             for i, area in enumerate(areas):
                 area_pane = TabPane(area["name"], id=f"nav-tab-area-{i}")
@@ -324,7 +324,7 @@ class NavPanel(Widget):
                 about = area.get("about", "")
                 if about:
                     await area_pane.mount(
-                        Static(format_message(about), markup=True)
+                        Static(format_message(about, on_url=self._on_url), markup=True)
                     )
                 if not area.get("pop") and not about:
                     await area_pane.mount(
@@ -336,7 +336,7 @@ class NavPanel(Widget):
             )
             if room_desc:
                 await left.mount(
-                    Static(format_message(room_desc), markup=True)
+                    Static(format_message(room_desc, on_url=self._on_url), markup=True)
                 )
 
         # Update compass rose

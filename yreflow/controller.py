@@ -13,6 +13,7 @@ from .protocol.connection import WolferyConnection
 from .protocol.controlled_char import ControlledChar
 from .protocol.http_auth import obtain_token
 from .commands.handler import CommandHandler, CommandResult
+from .url_catcher import UrlCatcher
 from .config import save_token, clear_token
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ class Controller:
         self.store = ModelStore(event_bus=self.event_bus)
         self.connection = WolferyConnection(config, self.store, self.event_bus)
         self.commands = CommandHandler(self.connection, self.store)
+        self.url_catcher = UrlCatcher(self.event_bus)
 
         # Subscribe to protocol events
         self.event_bus.subscribe(r"^message\.received$", self._on_message)

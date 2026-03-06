@@ -124,7 +124,7 @@ class Sidebar(VerticalScroll):
         self,
         store: ModelStore,
         player: str | None,
-        active_character: str | None,
+        active_char_path: str | None,
     ) -> None:
         """Rebuild watch list and room characters from model state."""
         self._clear_entries()
@@ -156,8 +156,8 @@ class Sidebar(VerticalScroll):
                 self._mount_entry(formatter(store, char_id))
 
         # --- Divider + Room characters ---
-        if active_character:
-            room_char_ids = self._get_room_characters(store, active_character)
+        if active_char_path:
+            room_char_ids = self._get_room_characters(store, active_char_path)
             if room_char_ids:
                 self.mount(Rule(classes="sidebar-divider"))
                 self.mount(Static("In Room", classes="sidebar-title room-title"))
@@ -166,19 +166,14 @@ class Sidebar(VerticalScroll):
 
         self.scroll_home(animate=False, immediate=True, force=True)
 
-    def _get_room_characters(self, store: ModelStore, character: str) -> list[str]:
+    def _get_room_characters(self, store: ModelStore, char_path: str) -> list[str]:
         """Get character IDs of everyone in the active character's room."""
-        try:
-            room_pointer = store.get(f"core.char.{character}.owned.inRoom")["rid"]
-        except (KeyError, AttributeError):
-            return []
-        try:
-            room_chars = store.get(room_pointer + ".chars._value")
-        except KeyError:
+        room_pointer = store.get_room_rid(char_path)
+        if not room_pointer:
             return []
 
         char_ids = []
-        for entry in room_chars:
+        for entry in store.get_room_chars(room_pointer):
             try:
                 # rid looks like "core.char.{id}.inroom"
                 char_id = entry["rid"].split(".")[2]
