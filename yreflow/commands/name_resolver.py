@@ -14,7 +14,8 @@ def parse_name(
     name_to_parse: str,
     wants: str = "id",
     awake: bool = True,
-) -> str:
+    wants_list: bool = False,
+) -> str | list[str]:
     """Fuzzy-match a character name from the model store.
 
     Extracted from Samples/CommandHandler.py:82-120.
@@ -47,7 +48,7 @@ def parse_name(
     if not retval:
         raise NameParseException(f"No name found like {name_to_parse}")
 
-    if len(retval) > 1:
+    if (not wants_list) and len(retval) > 1:
         raise NameParseException(f"Too many players match {name_to_parse}")
 
-    return retval[0]
+    return retval if wants_list else retval[0]

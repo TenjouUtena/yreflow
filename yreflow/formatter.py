@@ -170,7 +170,7 @@ def format_message(
             skips.add(c + 1)
             continue
 
-        # Superscript: ++text++ (approximated as dim in terminal)
+        # Superscript: ++text++ (Approximated with unicode)
         if ch == "+" and next_ch == "+" and not superscript:
             superscript = True
             out += ""
@@ -182,7 +182,7 @@ def format_message(
             skips.add(c + 1)
             continue
 
-        # Subscript: --text-- (approximated as dim in terminal)
+        # Subscript: --text-- (approximated with unicode)
         if ch == "-" and next_ch == "-" and not subscript:
             subscript = True
             out += ""

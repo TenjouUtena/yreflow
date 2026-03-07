@@ -173,7 +173,13 @@ class WolferyApp(App):
         Binding("ctrl+t", "toggle_markup_preview", "Markup", priority=True),
         Binding("ctrl+d", "open_store_browser", "Store browser", priority=True),
         Binding("ctrl+g", "toggle_nav_panel", "Navigation", priority=True),
+        Binding("tab", "none", "No Action", priority=True)
     ]
+
+    async def action_none(self):
+        input_bar = self.query_one("#input-bar", InputBar)
+        await input_bar.autocomplete()
+
 
     def __init__(self, controller=None, **kwargs):
         super().__init__(**kwargs)
@@ -202,6 +208,8 @@ class WolferyApp(App):
             input_bar.set_highlighter_state("spellcheck", True)
         if config.get("markup_preview_enabled", False):
             input_bar.set_highlighter_state("markup", True)
+
+        input_bar.focus()
 
         if self.controller:
             if self.controller.connection.auth_mode == "token":
