@@ -11,10 +11,14 @@ from typing import Literal
 from unicodeitplus import replace as upreplace
 from lark.exceptions import UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
 
+from yreflow.constants import NAMED_COLORS
+
 # Placeholders for content extracted before character-level formatting
 _LINK_PLACEHOLDER = "\x00LINK{}\x00"
 _ESC_PLACEHOLDER = "\x00ESC{}\x00"
 _CODE_PLACEHOLDER = "\x00CODE{}\x00"
+_FENCED_PLACEHOLDER = "\x00FENCED{}\x00"
+_BLOCK_PLACEHOLDER = "\x00BLOCK{}\x00"
 
 
 def convert_string(
@@ -56,9 +60,52 @@ def subscript_string(
 
 
 
+def _format_table(lines: list[str]) -> str:
+    """Convert markdown-style table lines into aligned Rich markup."""
+    rows: list[list[str]] = []
+    separator_idx: int | None = None
+    for i, line in enumerate(lines):
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if all(re.match(r"^-{3,}$", c) for c in cells):
+            separator_idx = i
+            continue
+        rows.append(cells)
+
+    if not rows:
+        return "\n".join(lines)
+
+    # Calculate column widths
+    num_cols = max(len(r) for r in rows)
+    widths = [0] * num_cols
+    for row in rows:
+        for j, cell in enumerate(row):
+            if j < num_cols:
+                widths[j] = max(widths[j], len(cell))
+
+    result_lines = []
+    for i, row in enumerate(rows):
+        parts = []
+        for j in range(num_cols):
+            cell = row[j] if j < len(row) else ""
+            parts.append(cell.ljust(widths[j]))
+        line_text = " │ ".join(parts)
+        if i == 0 and separator_idx is not None:
+            # Header row
+            result_lines.append(f"[bold]{line_text}[/bold]")
+            result_lines.append("─┼─".join("─" * w for w in widths))
+        else:
+            result_lines.append(line_text)
+
+    return "\n".join(result_lines)
+
+
 def format_message(
     msg_text: str,
     on_url: Callable[[str, str], None] | None = None,
+    superscript_style: str = "unicode",
+    superscript_color: str = "gold",
+    subscript_style: str = "unicode",
+    subscript_color: str = "skyblue",
 ) -> str:
     """Convert Wolfery markup in a message to Rich markup.
 
@@ -74,6 +121,21 @@ def format_message(
         return _ESC_PLACEHOLDER.format(idx)
 
     msg_text = re.sub(r"<esc>(.*?)</esc>", _replace_esc, msg_text, flags=re.DOTALL)
+
+    # Extract fenced code blocks (``` ... ```) — no formatting, dark background
+    fenced_blocks: list[str] = []
+
+    def _replace_fenced(m):
+        idx = len(fenced_blocks)
+        fenced_blocks.append(m.group(1))
+        return _FENCED_PLACEHOLDER.format(idx)
+
+    msg_text = re.sub(
+        r"^```[^\n]*\n(.*?)^```",
+        _replace_fenced,
+        msg_text,
+        flags=re.DOTALL | re.MULTILINE,
+    )
 
     # Extract `code` spans — content inside should not be formatted, rendered in goldenrod
     code_blocks: list[str] = []
@@ -113,6 +175,80 @@ def format_message(
 
     # Strip <nobr> tags (Rich/Textual has no non-breaking span support)
     msg_text = re.sub(r"</?nobr>", "", msg_text)
+
+    # Block-level formatting: headers, sections, tables
+    # Pre-formatted blocks are stored as placeholders to survive char-level escaping
+    block_results: list[str] = []
+
+    def _store_block(rich_text: str) -> str:
+        idx = len(block_results)
+        block_results.append(rich_text)
+        return _BLOCK_PLACEHOLDER.format(idx)
+
+    processed_lines: list[str] = []
+    raw_lines = msg_text.split("\n")
+    table_buffer: list[str] = []
+    i = 0
+    while i < len(raw_lines):
+        line = raw_lines[i]
+        stripped = line.strip()
+
+        # Flush table buffer if current line is not a table row
+        if table_buffer and not re.match(r"^\|.*\|", stripped):
+            processed_lines.append(_store_block(_format_table(table_buffer)))
+            table_buffer = []
+
+        # Table row: starts and ends with |
+        if re.match(r"^\|.*\|", stripped):
+            table_buffer.append(stripped)
+            i += 1
+            continue
+
+        # Headers: # at start of line
+        header_m = re.match(r"^(#{1,6})\s+(.*)", stripped)
+        if header_m:
+            level = len(header_m.group(1))
+            header_text = header_m.group(2)
+            if level == 1:
+                processed_lines.append(_store_block(f"[bold underline]{header_text}[/bold underline]"))
+            elif level == 2:
+                processed_lines.append(_store_block(f"[bold]{header_text}[/bold]"))
+            else:
+                processed_lines.append(_store_block(f"[bold dim]{header_text}[/bold dim]"))
+            i += 1
+            continue
+
+        # Limited section: [[title]] { ... }
+        limited_m = re.match(r"^\[\[(.+?)\]\]\s*\{", stripped)
+        if limited_m:
+            title = limited_m.group(1)
+            processed_lines.append(_store_block(f"[bold cyan]▸ {title}[/bold cyan]"))
+            # Collect content until closing }
+            i += 1
+            while i < len(raw_lines):
+                if raw_lines[i].strip() == "}":
+                    i += 1
+                    break
+                processed_lines.append(f"  {raw_lines[i]}")
+                i += 1
+            continue
+
+        # Open section: [[title]] alone on a line
+        section_m = re.match(r"^\[\[(.+?)\]\]$", stripped)
+        if section_m:
+            title = section_m.group(1)
+            processed_lines.append(_store_block(f"[bold cyan]▸ {title}[/bold cyan]"))
+            i += 1
+            continue
+
+        processed_lines.append(line)
+        i += 1
+
+    # Flush any remaining table buffer
+    if table_buffer:
+        processed_lines.append(_store_block(_format_table(table_buffer)))
+
+    msg_text = "\n".join(processed_lines)
 
     # Character-level formatting pass
     bold = False
@@ -170,27 +306,33 @@ def format_message(
             skips.add(c + 1)
             continue
 
-        # Superscript: ++text++ (Approximated with unicode)
+        # Superscript: ++text++ (Unicode or highlight)
         if ch == "+" and next_ch == "+" and not superscript:
             superscript = True
-            out += ""
+            if superscript_style == "highlight":
+                out += f"[rgb({NAMED_COLORS[superscript_color][0]},{NAMED_COLORS[superscript_color][1]},{NAMED_COLORS[superscript_color][2]})]"
             skips.add(c + 1)
             continue
         if ch == "+" and next_ch == "+" and superscript:
             superscript = False
-            out += ""
+            if superscript_style == "highlight":
+                out += f"[/rgb({NAMED_COLORS[superscript_color][0]},{NAMED_COLORS[superscript_color][1]},{NAMED_COLORS[superscript_color][2]})]"
             skips.add(c + 1)
             continue
 
-        # Subscript: --text-- (approximated with unicode)
+        # Subscript: --text-- (Unicode or highlight)
         if ch == "-" and next_ch == "-" and not subscript:
             subscript = True
-            out += ""
+            if subscript_style == "highlight":
+                out += f"[rgb({NAMED_COLORS[subscript_color][0]},{NAMED_COLORS[subscript_color][1]},{NAMED_COLORS[subscript_color][2]})]"
             skips.add(c + 1)
+
             continue
+
         if ch == "-" and next_ch == "-" and subscript:
             subscript = False
-            out += ""
+            if subscript_style == "highlight":
+                out += f"[/rgb({NAMED_COLORS[subscript_color][0]},{NAMED_COLORS[subscript_color][1]},{NAMED_COLORS[subscript_color][2]})]"
             skips.add(c + 1)
             continue
 
@@ -211,13 +353,18 @@ def format_message(
             out += "\\["
             continue
         
-        if superscript:
+        if superscript and superscript_style == "unicode":
             ch = superscript_string(ch)
 
-        if subscript:
+        if subscript and subscript_style == "unicode":
             ch = subscript_string(ch)
 
         out += ch
+
+    # Restore block-level formatted content (headers, sections, tables)
+    for i, rich_text in enumerate(block_results):
+        placeholder = _BLOCK_PLACEHOLDER.format(i)
+        out = out.replace(placeholder, rich_text)
 
     # Restore link placeholders – render as underlined cyan text.
     # Rich's [link=URL] syntax chokes on special chars in URLs (://, etc.),
@@ -226,6 +373,15 @@ def format_message(
         placeholder = _LINK_PLACEHOLDER.format(i)
         safe_text = text.replace("[", "\\[")
         out = out.replace(placeholder, f"[underline cyan]{safe_text}[/underline cyan]")
+
+    # Restore fenced code blocks with dark background
+    for i, raw in enumerate(fenced_blocks):
+        placeholder = _FENCED_PLACEHOLDER.format(i)
+        safe = raw.replace("[", "\\[")
+        out = out.replace(
+            placeholder,
+            f"[on grey15 dark_goldenrod]{safe}[/on grey15 dark_goldenrod]",
+        )
 
     # Restore `code` spans as goldenrod escaped text (no formatting applied)
     for i, raw in enumerate(code_blocks):

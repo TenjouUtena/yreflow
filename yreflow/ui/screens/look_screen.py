@@ -10,6 +10,7 @@ from textual.containers import Vertical, VerticalScroll
 from collections.abc import Callable
 
 from ...formatter import format_message
+from ...config import formatter_settings
 
 
 class LookScreen(ModalScreen):
@@ -125,7 +126,7 @@ class LookScreen(ModalScreen):
         desc = self.data.get("desc", "")
         if desc:
             await container.mount(
-                Static(format_message(desc, on_url=self._on_url), classes="look-text", markup=True)
+                Static(format_message(desc, on_url=self._on_url, **formatter_settings()), classes="look-text", markup=True)
             )
 
         exits = self.data.get("exits", [])
@@ -155,7 +156,7 @@ class LookScreen(ModalScreen):
         about = area.get("about", "")
         if about:
             await container.mount(
-                Static(format_message(about, on_url=self._on_url), classes="look-text", markup=True)
+                Static(format_message(about, on_url=self._on_url, **formatter_settings()), classes="look-text", markup=True)
             )
         if not area.get("pop") and not about:
             await container.mount(
@@ -166,7 +167,7 @@ class LookScreen(ModalScreen):
         desc = self.data.get("desc", "")
         if desc:
             await body.mount(
-                Static(format_message(desc, on_url=self._on_url), classes="look-text", markup=True)
+                Static(format_message(desc, on_url=self._on_url, **formatter_settings()), classes="look-text", markup=True)
             )
 
         about = self.data.get("about", "")
@@ -175,7 +176,7 @@ class LookScreen(ModalScreen):
                 Static("About", classes="look-section-title", markup=True)
             )
             await body.mount(
-                Static(format_message(about, on_url=self._on_url), classes="look-text", markup=True)
+                Static(format_message(about, on_url=self._on_url, **formatter_settings()), classes="look-text", markup=True)
             )
 
         tags = self.data.get("tags", [])

@@ -23,36 +23,13 @@ from .screens.profile_select import ProfileSelectScreen
 from .screens.store_browser import StoreBrowserScreen
 from .screens.url_screen import UrlScreen
 from .screens.settings_screen import SettingsScreen
-from ..config import load_config, save_preference
+from ..config import load_config, save_preference, formatter_settings
 from ..formatter import format_message
 
 
 _ELIDE_SPACE_CHARS = frozenset("',.!?:;-\u2019")
 
-_NAMED_COLORS: dict[str, tuple[int, int, int]] = {
-    "black": (0, 0, 0), "white": (255, 255, 255),
-    "red": (255, 0, 0), "green": (0, 128, 0), "blue": (0, 0, 255),
-    "yellow": (255, 255, 0), "cyan": (0, 255, 255), "magenta": (255, 0, 255),
-    "lime": (0, 255, 0), "orange": (255, 165, 0), "pink": (255, 192, 203),
-    "purple": (128, 0, 128), "violet": (238, 130, 238),
-    "brown": (165, 42, 42), "gold": (255, 215, 0),
-    "silver": (192, 192, 192), "gray": (128, 128, 128), "grey": (128, 128, 128),
-    "navy": (0, 0, 128), "teal": (0, 128, 128), "maroon": (128, 0, 0),
-    "olive": (128, 128, 0), "aqua": (0, 255, 255), "fuchsia": (255, 0, 255),
-    "coral": (255, 127, 80), "salmon": (250, 128, 114),
-    "tomato": (255, 99, 71), "crimson": (220, 20, 60),
-    "turquoise": (64, 224, 208), "indigo": (75, 0, 130),
-    "khaki": (240, 230, 140), "lavender": (230, 230, 250),
-    "plum": (221, 160, 221), "orchid": (218, 112, 214),
-    "sienna": (160, 82, 45), "tan": (210, 180, 140),
-    "thistle": (216, 191, 216), "wheat": (245, 222, 179),
-    "hotpink": (255, 105, 180), "deeppink": (255, 20, 147),
-    "skyblue": (135, 206, 235), "steelblue": (70, 130, 180),
-    "lightblue": (173, 216, 230), "lightgreen": (144, 238, 144),
-    "lightyellow": (255, 255, 224), "lightpink": (255, 182, 193),
-    "darkred": (139, 0, 0), "darkgreen": (0, 100, 0), "darkblue": (0, 0, 139),
-    "darkorange": (255, 140, 0), "darkviolet": (148, 0, 211),
-}
+from ..constants import NAMED_COLORS
 
 
 def _parse_css_color(color_str: str) -> tuple[int, int, int] | None:
@@ -78,8 +55,8 @@ def _parse_css_color(color_str: str) -> tuple[int, int, int] | None:
         return int(m.group(1)), int(m.group(2)), int(m.group(3))
 
     # Named CSS colors
-    if s in _NAMED_COLORS:
-        return _NAMED_COLORS[s]
+    if s in NAMED_COLORS:
+        return NAMED_COLORS[s]
 
     return None
 
@@ -610,7 +587,7 @@ class WolferyApp(App):
 
         sender = message["frm"].get("name", "???")
         sender_id = message["frm"].get("id", "")
-        msg_text = format_message(message.get("msg", ""), on_url=self._publish_url)
+        msg_text = format_message(message.get("msg", ""), on_url=self._publish_url, **formatter_settings())
         j = message.get("j", {})
         target = message.get("t", {})
         target_first_name = target.get("name", "")

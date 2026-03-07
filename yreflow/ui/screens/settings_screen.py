@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from textual.binding import Binding
 from textual.screen import ModalScreen
-from textual.widgets import Static, Switch
-from textual.containers import Vertical, Horizontal
+from textual.widgets import Static, Switch, Select
+from textual.containers import Vertical, Horizontal, VerticalScroll
 
 from ...config import load_config, save_preference
+from ...constants import NAMED_COLORS
 
 
 class _SettingRow(Horizontal):
@@ -38,6 +39,53 @@ class _SettingRow(Horizontal):
     def compose(self):
         yield Static(self._label)
         yield Switch(value=self._value, id=f"setting-{self.setting_key}")
+
+
+class _SettingSelect(Horizontal):
+    """A label + dropdown row."""
+
+    DEFAULT_CSS = """
+    _SettingSelect {
+        height: auto;
+        padding: 0 1;
+        margin-bottom: 1;
+    }
+    _SettingSelect Static {
+        width: 1fr;
+        content-align-vertical: middle;
+        height: 3;
+    }
+    _SettingSelect Select {
+        width: 20;
+    }
+    """
+
+    def __init__(
+        self,
+        label: str,
+        setting_key: str,
+        options: list[tuple[str, str]],
+        value: str,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.setting_key = setting_key
+        self._label = label
+        self._options = options
+        self._value = value
+
+    def compose(self):
+        yield Static(self._label)
+        yield Select(
+            [(text, val) for text, val in self._options],
+            value=self._value,
+            allow_blank=False,
+            id=f"select-{self.setting_key}",
+        )
+
+
+_STYLE_OPTIONS = [("Unicode", "unicode"), ("Highlight", "highlight")]
+_COLOR_OPTIONS = [(name.capitalize(), name) for name in sorted(NAMED_COLORS)]
 
 
 class SettingsScreen(ModalScreen[None]):
@@ -76,10 +124,44 @@ class SettingsScreen(ModalScreen[None]):
 
     def compose(self):
         config = load_config()
-        with Vertical(id="settings-container"):
+        with VerticalScroll(id="settings-container"):
             yield Static("Settings", id="settings-title")
             for label, key in self.SETTINGS:
                 yield _SettingRow(label, key, config.get(key, False))
+
+            # Superscript style
+            sup_style = config.get("superscript_style", "unicode")
+            yield _SettingSelect(
+                "Superscript Style", "superscript_style",
+                _STYLE_OPTIONS, sup_style,
+            )
+            sup_color = config.get("superscript_color", "gold")
+            yield _SettingSelect(
+                "Superscript Color", "superscript_color",
+                _COLOR_OPTIONS, sup_color,
+                id="row-superscript_color",
+            )
+
+            # Subscript style
+            sub_style = config.get("subscript_style", "unicode")
+            yield _SettingSelect(
+                "Subscript Style", "subscript_style",
+                _STYLE_OPTIONS, sub_style,
+            )
+            sub_color = config.get("subscript_color", "skyblue")
+            yield _SettingSelect(
+                "Subscript Color", "subscript_color",
+                _COLOR_OPTIONS, sub_color,
+                id="row-subscript_color",
+            )
+
+    def on_mount(self) -> None:
+        config = load_config()
+        # Hide color rows if style is unicode
+        if config.get("superscript_style", "unicode") != "highlight":
+            self.query_one("#row-superscript_color").display = False
+        if config.get("subscript_style", "unicode") != "highlight":
+            self.query_one("#row-subscript_color").display = False
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         switch_id = event.switch.id or ""
@@ -101,6 +183,19 @@ class SettingsScreen(ModalScreen[None]):
             input_bar.refresh()
         elif key == "console_enabled":
             self.app.run_worker(self.app.toggle_console_tab(event.value))
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        select_id = event.select.id or ""
+        if not select_id.startswith("select-"):
+            return
+        key = select_id.removeprefix("select-")
+        save_preference(key, event.value)
+
+        # Toggle color picker visibility
+        if key == "superscript_style":
+            self.query_one("#row-superscript_color").display = (event.value == "highlight")
+        elif key == "subscript_style":
+            self.query_one("#row-subscript_color").display = (event.value == "highlight")
 
     def action_close(self) -> None:
         self.dismiss(None)
