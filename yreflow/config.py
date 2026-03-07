@@ -47,6 +47,17 @@ def clear_token() -> None:
     _write_config(config)
 
 
+def formatter_settings() -> dict:
+    """Return formatter-related settings with defaults."""
+    cfg = load_config()
+    return {
+        "superscript_style": cfg.get("superscript_style", "unicode"),
+        "superscript_color": cfg.get("superscript_color", "gold"),
+        "subscript_style": cfg.get("subscript_style", "unicode"),
+        "subscript_color": cfg.get("subscript_color", "skyblue"),
+    }
+
+
 def _write_config(config: dict) -> None:
     """Write config dict as TOML to the config file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)

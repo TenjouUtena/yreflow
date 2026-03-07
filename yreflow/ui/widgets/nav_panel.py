@@ -12,6 +12,7 @@ from textual.widgets import Static, TabbedContent, TabPane
 from collections.abc import Callable
 
 from ...formatter import format_message
+from ...config import formatter_settings
 
 # Maps Textual key names to standard MUD compass nav values.
 _KEY_TO_NAV = {
@@ -312,7 +313,7 @@ class NavPanel(Widget):
             )
             if room_desc:
                 await room_pane.mount(
-                    Static(format_message(room_desc, on_url=self._on_url), markup=True)
+                    Static(format_message(room_desc, on_url=self._on_url, **formatter_settings()), markup=True)
                 )
             for i, area in enumerate(areas):
                 area_pane = TabPane(area["name"], id=f"nav-tab-area-{i}")
@@ -324,7 +325,7 @@ class NavPanel(Widget):
                 about = area.get("about", "")
                 if about:
                     await area_pane.mount(
-                        Static(format_message(about, on_url=self._on_url), markup=True)
+                        Static(format_message(about, on_url=self._on_url, **formatter_settings()), markup=True)
                     )
                 if not area.get("pop") and not about:
                     await area_pane.mount(
@@ -336,7 +337,7 @@ class NavPanel(Widget):
             )
             if room_desc:
                 await left.mount(
-                    Static(format_message(room_desc, on_url=self._on_url), markup=True)
+                    Static(format_message(room_desc, on_url=self._on_url, **formatter_settings()), markup=True)
                 )
 
         # Update compass rose

@@ -15,40 +15,21 @@ from .widgets.input_bar import InputBar
 from .widgets.nav_panel import NavPanel
 from .widgets.watch_list import Sidebar
 from .widgets.character_bar import CharacterBar, CharacterButton, AddCharacterButton
+from .widgets.connection_indicator import ConnectionIndicator
 from .screens.character_select import CharacterSelectScreen
 from .screens.look_screen import LookScreen
 from .screens.login_screen import LoginScreen
 from .screens.profile_select import ProfileSelectScreen
 from .screens.store_browser import StoreBrowserScreen
 from .screens.url_screen import UrlScreen
-from ..config import load_config, save_preference
+from .screens.settings_screen import SettingsScreen
+from ..config import load_config, save_preference, formatter_settings
 from ..formatter import format_message
 
 
-_NAMED_COLORS: dict[str, tuple[int, int, int]] = {
-    "black": (0, 0, 0), "white": (255, 255, 255),
-    "red": (255, 0, 0), "green": (0, 128, 0), "blue": (0, 0, 255),
-    "yellow": (255, 255, 0), "cyan": (0, 255, 255), "magenta": (255, 0, 255),
-    "lime": (0, 255, 0), "orange": (255, 165, 0), "pink": (255, 192, 203),
-    "purple": (128, 0, 128), "violet": (238, 130, 238),
-    "brown": (165, 42, 42), "gold": (255, 215, 0),
-    "silver": (192, 192, 192), "gray": (128, 128, 128), "grey": (128, 128, 128),
-    "navy": (0, 0, 128), "teal": (0, 128, 128), "maroon": (128, 0, 0),
-    "olive": (128, 128, 0), "aqua": (0, 255, 255), "fuchsia": (255, 0, 255),
-    "coral": (255, 127, 80), "salmon": (250, 128, 114),
-    "tomato": (255, 99, 71), "crimson": (220, 20, 60),
-    "turquoise": (64, 224, 208), "indigo": (75, 0, 130),
-    "khaki": (240, 230, 140), "lavender": (230, 230, 250),
-    "plum": (221, 160, 221), "orchid": (218, 112, 214),
-    "sienna": (160, 82, 45), "tan": (210, 180, 140),
-    "thistle": (216, 191, 216), "wheat": (245, 222, 179),
-    "hotpink": (255, 105, 180), "deeppink": (255, 20, 147),
-    "skyblue": (135, 206, 235), "steelblue": (70, 130, 180),
-    "lightblue": (173, 216, 230), "lightgreen": (144, 238, 144),
-    "lightyellow": (255, 255, 224), "lightpink": (255, 182, 193),
-    "darkred": (139, 0, 0), "darkgreen": (0, 100, 0), "darkblue": (0, 0, 139),
-    "darkorange": (255, 140, 0), "darkviolet": (148, 0, 211),
-}
+_ELIDE_SPACE_CHARS = frozenset("',.!?:;-\u2019")
+
+from ..constants import NAMED_COLORS
 
 
 def _parse_css_color(color_str: str) -> tuple[int, int, int] | None:
@@ -74,8 +55,8 @@ def _parse_css_color(color_str: str) -> tuple[int, int, int] | None:
         return int(m.group(1)), int(m.group(2)), int(m.group(3))
 
     # Named CSS colors
-    if s in _NAMED_COLORS:
-        return _NAMED_COLORS[s]
+    if s in NAMED_COLORS:
+        return NAMED_COLORS[s]
 
     return None
 
@@ -111,6 +92,7 @@ class WolferyCommands(Provider):
         ("Toggle markup preview", "toggle_markup_preview", "Wolfery markup preview (Ctrl+T)"),
         ("Browse store", "open_store_browser", "Browse the live model store for debugging (Ctrl+D)"),
         ("Toggle navigation", "toggle_nav_panel", "Open/close navigation panel (Ctrl+G)"),
+        ("Settings", "open_settings", "Open settings screen"),
     ]
 
     async def search(self, query: str) -> Hits:
@@ -122,6 +104,7 @@ class WolferyCommands(Provider):
 
 
 _UNIMPORTANT_STYLES = {"sleep", "leave", "arrive", "travel", "action", "wakeup"}
+_CONSOLE_ID = "__console__"
 
 
 class WolferyApp(App):
@@ -169,11 +152,15 @@ class WolferyApp(App):
         Binding("ctrl+n", "next_character", "Next char", priority=True),
         Binding("ctrl+f", "open_character_select", "New char", priority=True),
         Binding("ctrl+grave_accent", "command_palette", "Commands", priority=True),
-        Binding("ctrl+s", "toggle_spellcheck", "Spellcheck", priority=True),
-        Binding("ctrl+t", "toggle_markup_preview", "Markup", priority=True),
         Binding("ctrl+d", "open_store_browser", "Store browser", priority=True),
         Binding("ctrl+g", "toggle_nav_panel", "Navigation", priority=True),
+        Binding("tab", "autocomplete", "Fire Autocomplete", priority=True)
     ]
+
+    async def action_autocomplete(self):
+        input_bar = self.query_one("#input-bar", InputBar)
+        await input_bar.autocomplete()
+
 
     def __init__(self, controller=None, **kwargs):
         super().__init__(**kwargs)
@@ -203,6 +190,11 @@ class WolferyApp(App):
         if config.get("markup_preview_enabled", False):
             input_bar.set_highlighter_state("markup", True)
 
+        input_bar.focus()
+
+        if config.get("console_enabled", False):
+            await self._create_console_tab()
+
         if self.controller:
             if self.controller.connection.auth_mode == "token":
                 self.run_worker(self.controller.start(), exclusive=True, name="websocket")
@@ -214,6 +206,56 @@ class WolferyApp(App):
         """Show character select if no characters appeared after connect."""
         if not self.character_order and self.controller and self.controller.connection.player:
             self.action_open_character_select()
+
+    # --- Console tab ---
+
+    async def _create_console_tab(self) -> None:
+        """Create the console tab (no collapsible, just a single message view)."""
+        if _CONSOLE_ID in self.character_views:
+            return
+        main_view = MessageView(
+            id=f"main-{_CONSOLE_ID}", classes="char-main-messages",
+        )
+        container = Vertical(id=f"char-container-{_CONSOLE_ID}")
+        msg_col = self.query_one("#message-column", Vertical)
+        await msg_col.mount(container)
+        await container.mount(main_view)
+        container.display = False
+
+        self.character_views[_CONSOLE_ID] = {
+            "main": main_view,
+            "container": container,
+        }
+        self.unread_counts[_CONSOLE_ID] = 0
+        self.urgent_unreads[_CONSOLE_ID] = False
+        self.character_order.insert(0, _CONSOLE_ID)
+
+        char_bar = self.query_one("#character-bar", CharacterBar)
+        await char_bar.add_character(_CONSOLE_ID, "Console", console=True)
+
+    async def _remove_console_tab(self) -> None:
+        """Remove the console tab."""
+        if _CONSOLE_ID not in self.character_views:
+            return
+        views = self.character_views[_CONSOLE_ID]
+        await views["container"].remove()
+        char_bar = self.query_one("#character-bar", CharacterBar)
+        char_bar.remove_character(_CONSOLE_ID)
+        del self.character_views[_CONSOLE_ID]
+        del self.unread_counts[_CONSOLE_ID]
+        del self.urgent_unreads[_CONSOLE_ID]
+        self.character_order.remove(_CONSOLE_ID)
+        if self.active_character == _CONSOLE_ID:
+            self.active_character = None
+            if self.character_order:
+                self._switch_to_character(self.character_order[0])
+
+    async def toggle_console_tab(self, enabled: bool) -> None:
+        """Create or remove the console tab (called from settings)."""
+        if enabled:
+            await self._create_console_tab()
+        else:
+            await self._remove_console_tab()
 
     def _on_login_result(self, credentials: tuple[str, str] | None) -> None:
         """Handle login screen dismissal."""
@@ -250,41 +292,53 @@ class WolferyApp(App):
         input_bar = self.query_one("#input-bar", InputBar)
         input_bar.push_history(command)
 
-        if self.controller and self.active_character:
-            # Nav mode: check if typed text matches an exit name
-            views = self.character_views.get(self.active_character, {})
-            nav_panel = views.get("nav_panel")
-            if nav_panel and nav_panel.display:
-                matched = nav_panel.find_exit_by_key(command)
-                if matched:
-                    cc = self.controller.connection.get_controlled_char(self.active_character)
-                    if cc:
-                        await self.controller.connection.send(
-                            f"call.{cc.ctrl_path}.useExit",
-                            {"exitId": matched["id"]},
-                        )
-                        return
+        if not self.controller or not self.active_character:
+            return
 
-            result = await self.controller.handle_command(command, self.active_character)
-            if result and result.look_data:
-                self.push_screen(LookScreen(result.look_data, on_url=self._publish_url))
-            if result and result.open_profile_select:
-                cc = self.controller.connection.get_controlled_char(self.active_character)
-                if cc is None:
-                    from ..protocol.controlled_char import ControlledChar
-                    cc = ControlledChar(char_id=self.active_character)
-                self.push_screen(
-                    ProfileSelectScreen(
-                        self.controller.store,
-                        self.controller.connection,
-                        cc,
-                    ),
-                    callback=self._on_profile_selected,
-                )
+        # Console tab: separate command handler
+        if self.active_character == _CONSOLE_ID:
+            result = await self.controller.handle_console_command(command)
             if result and result.display_text:
                 await self.display_system_text(result.display_text)
             if result and result.notification:
                 await self.notify(result.notification)
+            return
+
+        # Character/puppet tabs
+        # Nav mode: check if typed text matches an exit name
+        views = self.character_views.get(self.active_character, {})
+        nav_panel = views.get("nav_panel")
+        if nav_panel and nav_panel.display:
+            matched = nav_panel.find_exit_by_key(command)
+            if matched:
+                cc = self.controller.connection.get_controlled_char(self.active_character)
+                if cc:
+                    await self.controller.connection.send(
+                        f"call.{cc.ctrl_path}.useExit",
+                        {"exitId": matched["id"]},
+                    )
+                    return
+
+        result = await self.controller.handle_command(command, self.active_character)
+        if result and result.look_data:
+            self.push_screen(LookScreen(result.look_data, on_url=self._publish_url))
+        if result and result.open_profile_select:
+            cc = self.controller.connection.get_controlled_char(self.active_character)
+            if cc is None:
+                from ..protocol.controlled_char import ControlledChar
+                cc = ControlledChar(char_id=self.active_character)
+            self.push_screen(
+                ProfileSelectScreen(
+                    self.controller.store,
+                    self.controller.connection,
+                    cc,
+                ),
+                callback=self._on_profile_selected,
+            )
+        if result and result.display_text:
+            await self.display_system_text(result.display_text)
+        if result and result.notification:
+            await self.notify(result.notification)
 
     def _on_profile_selected(self, profile_name: str | None) -> None:
         if profile_name:
@@ -315,6 +369,11 @@ class WolferyApp(App):
         # Switch input history to this character
         input_bar = self.query_one("#input-bar", InputBar)
         input_bar.set_active_character(character)
+
+        if character == _CONSOLE_ID:
+            # Console has no nav panel or room context
+            input_bar.set_nav_mode(False)
+            return
 
         # Sync nav mode with new character's nav panel state
         nav_panel = self.character_views[character].get("nav_panel")
@@ -380,6 +439,9 @@ class WolferyApp(App):
         save_preference("markup_preview_enabled", enabled)
         input_bar.refresh()
         self.notify(f"Markup preview {'on' if enabled else 'off'}")
+
+    def action_open_settings(self) -> None:
+        self.push_screen(SettingsScreen())
 
     def action_open_store_browser(self) -> None:
         if self.controller:
@@ -525,7 +587,7 @@ class WolferyApp(App):
 
         sender = message["frm"].get("name", "???")
         sender_id = message["frm"].get("id", "")
-        msg_text = format_message(message.get("msg", ""), on_url=self._publish_url)
+        msg_text = format_message(message.get("msg", ""), on_url=self._publish_url, **formatter_settings())
         j = message.get("j", {})
         target = message.get("t", {})
         target_first_name = target.get("name", "")
@@ -590,6 +652,7 @@ class WolferyApp(App):
         focus_color: str | None = None,
     ) -> str:
         ts = self._format_timestamp(timestamp, focus_color)
+        sep = "" if msg and msg[0] in _ELIDE_SPACE_CHARS else " "
 
         if is_ooc and style not in ("ooc",):
             msg = f"[dim]{msg}[/dim]"
@@ -598,29 +661,29 @@ class WolferyApp(App):
             return f'{ts}[bold cyan]{sender}[/bold cyan] says, "{msg}"'
 
         if style == "pose":
-            return f"{ts}[bold cyan]{sender}[/bold cyan] {msg}"
+            return f"{ts}[bold cyan]{sender}[/bold cyan]{sep}{msg}"
 
         if style == "ooc":
             if has_pose:
-                return f"{ts}[dim]\\[OOC][/dim] [bold cyan]{sender}[/bold cyan] [dim]{msg}[/dim]"
+                return f"{ts}[dim]\\[OOC][/dim] [bold cyan]{sender}[/bold cyan]{sep}[dim]{msg}[/dim]"
             return f'{ts}[dim]\\[OOC][/dim] [bold cyan]{sender}[/bold cyan] [dim]says, "{msg}"[/dim]'
 
         if style == "whisper":
             label = f"[magenta]whisper {target_name}[/magenta]"
             if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}) {msg}"
+                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
             return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) whispers, "{msg}"'
 
         if style == "message":
             label = f"[yellow]msg {target_name}[/yellow]"
             if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}) {msg}"
+                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
             return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) messages, "{msg}"'
 
         if style == "address":
             label = f"[green]@{target_name}[/green]"
             if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}) {msg}"
+                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
             return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) says, "{msg}"'
 
         if style == "describe":
@@ -648,6 +711,11 @@ class WolferyApp(App):
         if self.active_character and self.active_character in self.character_views:
             view = self.character_views[self.active_character]["main"]
             view.write(f"[yellow]{text}[/yellow]")
+        # Also write to console tab (if it exists and isn't already the active tab)
+        if _CONSOLE_ID in self.character_views and self.active_character != _CONSOLE_ID:
+            self.character_views[_CONSOLE_ID]["main"].write(f"[yellow]{text}[/yellow]")
+            self.unread_counts[_CONSOLE_ID] = self.unread_counts.get(_CONSOLE_ID, 0) + 1
+            self._update_unread_display(_CONSOLE_ID)
 
     async def notify(self, text: str, character: str | None = None, **kwargs) -> None:
         target = character or self.active_character
@@ -660,6 +728,12 @@ class WolferyApp(App):
             if character is not None:
                 self.urgent_unreads[target] = True
             self._update_unread_display(target)
+        # Also write to console tab
+        if _CONSOLE_ID in self.character_views and target != _CONSOLE_ID:
+            self.character_views[_CONSOLE_ID]["main"].write(f"[bold yellow]>> {text}[/bold yellow]")
+            if self.active_character != _CONSOLE_ID:
+                self.unread_counts[_CONSOLE_ID] = self.unread_counts.get(_CONSOLE_ID, 0) + 1
+                self._update_unread_display(_CONSOLE_ID)
 
     async def update_room(self) -> None:
         self._rebuild_sidebar()
@@ -785,3 +859,19 @@ class WolferyApp(App):
     async def log_raw(self, text: str) -> None:
         # Debug logging -- no-op for now
         pass
+
+    async def update_connection_status(self, status: str) -> None:
+        indicator = self.query_one("#connection-indicator", ConnectionIndicator)
+        if status == "connected":
+            indicator.set_connected()
+        elif status == "disconnected":
+            indicator.set_disconnected()
+        elif status == "reconnecting":
+            indicator.set_reconnecting()
+
+    async def blink_connection_indicator(self) -> None:
+        try:
+            indicator = self.query_one("#connection-indicator", ConnectionIndicator)
+            indicator.blink()
+        except Exception:
+            pass

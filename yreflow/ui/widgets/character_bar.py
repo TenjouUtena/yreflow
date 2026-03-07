@@ -6,6 +6,8 @@ from textual.containers import Horizontal
 from textual.widgets import Static
 from textual.message import Message
 
+from .connection_indicator import ConnectionIndicator
+
 
 class CharacterButton(Static):
     """A single character button in the CharacterBar."""
@@ -28,6 +30,18 @@ class CharacterButton(Static):
     }
     CharacterButton.inactive:hover {
         background: $accent 30%;
+    }
+    CharacterButton.console.active {
+        background: dodgerblue;
+        color: white;
+        text-style: bold;
+    }
+    CharacterButton.console.inactive {
+        background: dodgerblue 30%;
+        color: $text;
+    }
+    CharacterButton.console.inactive:hover {
+        background: dodgerblue 50%;
     }
     """
 
@@ -102,16 +116,26 @@ class CharacterBar(Horizontal):
         self._buttons: dict[str, CharacterButton] = {}
 
     def compose(self):
+        yield ConnectionIndicator(id="connection-indicator")
         yield AddCharacterButton(id="add-char-btn")
 
-    async def add_character(self, character_id: str, name: str) -> None:
+    async def add_character(self, character_id: str, name: str, *, console: bool = False) -> None:
         """Add a new character button before the [+] button."""
         if character_id in self._buttons:
             return
         btn = CharacterButton(
             character_id, name, id=f"char-btn-{character_id}",
         )
-        await self.mount(btn, before=self.query_one("#add-char-btn"))
+        if console:
+            btn.add_class("console")
+            # Mount console button as the very first child
+            first_btn = next(iter(self._buttons.values()), None)
+            if first_btn:
+                await self.mount(btn, before=first_btn)
+            else:
+                await self.mount(btn, before=self.query_one("#add-char-btn"))
+        else:
+            await self.mount(btn, before=self.query_one("#add-char-btn"))
         self._buttons[character_id] = btn
 
     def remove_character(self, character_id: str) -> None:

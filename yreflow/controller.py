@@ -5,6 +5,7 @@ Subscribes to EventBus events from the protocol and routes them to UI calls.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from .protocol.events import EventBus
@@ -13,8 +14,9 @@ from .protocol.connection import WolferyConnection
 from .protocol.controlled_char import ControlledChar
 from .protocol.http_auth import obtain_token
 from .commands.handler import CommandHandler, CommandResult
+from .commands.console_handler import ConsoleHandler
 from .url_catcher import UrlCatcher
-from .config import save_token, clear_token
+from .config import load_config, save_token, clear_token
 
 if TYPE_CHECKING:
     from .ui.base import UIProtocol
@@ -27,7 +29,9 @@ class Controller:
         self.store = ModelStore(event_bus=self.event_bus)
         self.connection = WolferyConnection(config, self.store, self.event_bus)
         self.commands = CommandHandler(self.connection, self.store)
+        self.console_commands = ConsoleHandler(self.connection, self.store)
         self.url_catcher = UrlCatcher(self.event_bus)
+        self._reconnect_delay = 5.0
 
         # Subscribe to protocol events
         self.event_bus.subscribe(r"^message\.received$", self._on_message)
@@ -38,6 +42,7 @@ class Controller:
         self.event_bus.subscribe(r"^character\.tab\.needed$", self._on_tab_needed)
         self.event_bus.subscribe(r"^raw\.message$", self._on_raw_message)
         self.event_bus.subscribe(r"^connection\.closed$", self._on_connection_closed)
+        self.event_bus.subscribe(r"^connection\.established$", self._on_connection_established)
         self.event_bus.subscribe(r"^connection\.failed$", self._on_connection_failed)
         self.event_bus.subscribe(r"^look\.result$", self._on_look_result)
         self.event_bus.subscribe(r"^auth\.failed$", self._on_auth_failed)
@@ -64,6 +69,9 @@ class Controller:
         if cc is None:
             cc = ControlledChar(char_id=ctrl_id)
         return await self.commands.process_command(command, cc)
+
+    async def handle_console_command(self, command: str) -> CommandResult:
+        return await self.console_commands.process_command(command)
 
     # --- Event handlers ---
 
@@ -106,11 +114,25 @@ class Controller:
 
     async def _on_raw_message(self, event_name: str, text: str, **kw) -> None:
         await self.ui.log_raw(text)
+        await self.ui.blink_connection_indicator()
+
+    async def _on_connection_established(self, event_name: str, **kw) -> None:
+        self._reconnect_delay = 5.0
+        await self.ui.update_connection_status("connected")
 
     async def _on_connection_closed(self, event_name: str, **kw) -> None:
+        await self.ui.update_connection_status("disconnected")
         await self.ui.display_system_text("Connection closed.")
+        if load_config().get("auto_reconnect", False):
+            await self.ui.update_connection_status("reconnecting")
+            delay = self._reconnect_delay
+            await self.ui.display_system_text(f"Reconnecting in {delay:.0f} seconds...")
+            await asyncio.sleep(delay)
+            self._reconnect_delay = min(delay * 2, 120.0)
+            await self.connection.connect()
 
     async def _on_connection_failed(self, event_name: str, **kw) -> None:
+        await self.ui.update_connection_status("disconnected")
         await self.ui.display_system_text("Could not connect to Wolfery!")
 
     async def _on_look_result(self, event_name: str, data: dict, **kw) -> None:

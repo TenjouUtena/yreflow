@@ -1,10 +1,14 @@
 """Command input bar widget."""
 
+from collections import deque
+
 from textual.events import Key
 from textual.message import Message
 from textual.widgets import Input
 
 from ..highlighters import CompositeHighlighter, MarkupPreviewHighlighter, SpellCheckHighlighter
+
+from ...commands.name_resolver import NameParseException, parse_name
 
 # Keys that should pass through to app-level bindings even when input is focused.
 _PASSTHROUGH_KEYS = {
@@ -58,6 +62,10 @@ class InputBar(Input):
         self._in_recall_mode: bool = False
         self._recall_index: int = -1
         self._nav_mode: bool = False
+        self._autocompleting: bool = False
+        self._autocomplete_history: deque[str] = deque()
+        self._autocomplete_to: int = -1
+        self._autocomplete_length: int = -1
 
     def set_active_character(self, character: str) -> None:
         """Switch which character's history is active."""
@@ -83,7 +91,45 @@ class InputBar(Input):
         """Enable/disable navigation mode (arrow keys pass through to NavPanel)."""
         self._nav_mode = enabled
 
+    async def autocomplete(self) -> None:
+        ## If the input bar isn't focused, then focus it.
+        if not self.has_focus:
+            self.focus(False)
+            return
+
+        if self._autocompleting:
+            # Cycle to next match, revert to the pre-completion text first.
+            self._autocomplete_history.rotate(-1)
+            self.value = self.value[:self._autocomplete_to+1]
+        else:
+            lookup = self.value.split(' ')[-1]
+
+            # If there's nothing to autocomplete, just stop.
+            if not lookup or len(lookup) < 3:
+                return
+
+            self._autocomplete_to = self.cursor_position
+            self._autocomplete_length = len(lookup)
+
+            try:
+                results = parse_name(self.app.controller.store, lookup, 'fullname', True, True)
+            except NameParseException:
+                return
+
+            self._autocomplete_history = deque(results)
+            self._autocompleting = True
+
+        # Append the untyped remainder of the matched name.
+        self.value += self._autocomplete_history[0][self._autocomplete_length:]
+        self.cursor_position = len(self.value)
+
+
     async def _on_key(self, event: Key) -> None:
+        if event.key == 'backspace' and self._autocompleting:
+            self.value = self.value[0:self._autocomplete_to+1]
+            self.cursor_position = len(self.value)
+        self._autocompleting = False
+
         # In nav mode, let directional keys bubble up to NavPanel
         if self._nav_mode and event.key in _NAV_PASSTHROUGH_KEYS:
             return

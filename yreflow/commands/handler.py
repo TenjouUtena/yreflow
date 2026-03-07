@@ -129,6 +129,7 @@ class CommandHandler:
         patterns["sweep"] = {
             "patterns": [
                 (lambda cmd: cmd.strip() == "sweep", lambda cmd: None),
+                (lambda cmd: cmd.startswith("sweep "), lambda cmd: cmd[6:]),
             ],
             "function": self.handle_sweep,
         }
@@ -435,9 +436,19 @@ class CommandHandler:
         return CommandResult(notification=f"Teleported to {location}.")
 
     async def handle_sweep(self, content, cc: ControlledChar) -> CommandResult:
+        params = {}
+        if content:
+            try:
+                target_id = parse_name(self.store, content)
+                display_name = parse_name(self.store, content, wants="name")
+            except NameParseException as e:
+                return CommandResult(success=False, notification=str(e))
+            params["charId"] = target_id
         await self.conn.send(
-            f"call.{cc.ctrl_path}.sweep", {}
+            f"call.{cc.ctrl_path}.sweep", params
         )
+        if content:
+            return CommandResult(notification=f"Sweeping {display_name}...")
         return CommandResult()
 
     def _find_exit_by_key(self, cc: ControlledChar, exit_name: str) -> dict | None:
