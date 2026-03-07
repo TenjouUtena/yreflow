@@ -15,12 +15,14 @@ from .widgets.input_bar import InputBar
 from .widgets.nav_panel import NavPanel
 from .widgets.watch_list import Sidebar
 from .widgets.character_bar import CharacterBar, CharacterButton, AddCharacterButton
+from .widgets.connection_indicator import ConnectionIndicator
 from .screens.character_select import CharacterSelectScreen
 from .screens.look_screen import LookScreen
 from .screens.login_screen import LoginScreen
 from .screens.profile_select import ProfileSelectScreen
 from .screens.store_browser import StoreBrowserScreen
 from .screens.url_screen import UrlScreen
+from .screens.settings_screen import SettingsScreen
 from ..config import load_config, save_preference
 from ..formatter import format_message
 
@@ -111,6 +113,7 @@ class WolferyCommands(Provider):
         ("Toggle markup preview", "toggle_markup_preview", "Wolfery markup preview (Ctrl+T)"),
         ("Browse store", "open_store_browser", "Browse the live model store for debugging (Ctrl+D)"),
         ("Toggle navigation", "toggle_nav_panel", "Open/close navigation panel (Ctrl+G)"),
+        ("Settings", "open_settings", "Open settings screen"),
     ]
 
     async def search(self, query: str) -> Hits:
@@ -169,14 +172,12 @@ class WolferyApp(App):
         Binding("ctrl+n", "next_character", "Next char", priority=True),
         Binding("ctrl+f", "open_character_select", "New char", priority=True),
         Binding("ctrl+grave_accent", "command_palette", "Commands", priority=True),
-        Binding("ctrl+s", "toggle_spellcheck", "Spellcheck", priority=True),
-        Binding("ctrl+t", "toggle_markup_preview", "Markup", priority=True),
         Binding("ctrl+d", "open_store_browser", "Store browser", priority=True),
         Binding("ctrl+g", "toggle_nav_panel", "Navigation", priority=True),
-        Binding("tab", "none", "No Action", priority=True)
+        Binding("tab", "autocomplete", "Fire Autocomplete", priority=True)
     ]
 
-    async def action_none(self):
+    async def action_autocomplete(self):
         input_bar = self.query_one("#input-bar", InputBar)
         await input_bar.autocomplete()
 
@@ -388,6 +389,9 @@ class WolferyApp(App):
         save_preference("markup_preview_enabled", enabled)
         input_bar.refresh()
         self.notify(f"Markup preview {'on' if enabled else 'off'}")
+
+    def action_open_settings(self) -> None:
+        self.push_screen(SettingsScreen())
 
     def action_open_store_browser(self) -> None:
         if self.controller:
@@ -793,3 +797,19 @@ class WolferyApp(App):
     async def log_raw(self, text: str) -> None:
         # Debug logging -- no-op for now
         pass
+
+    async def update_connection_status(self, status: str) -> None:
+        indicator = self.query_one("#connection-indicator", ConnectionIndicator)
+        if status == "connected":
+            indicator.set_connected()
+        elif status == "disconnected":
+            indicator.set_disconnected()
+        elif status == "reconnecting":
+            indicator.set_reconnecting()
+
+    async def blink_connection_indicator(self) -> None:
+        try:
+            indicator = self.query_one("#connection-indicator", ConnectionIndicator)
+            indicator.blink()
+        except Exception:
+            pass

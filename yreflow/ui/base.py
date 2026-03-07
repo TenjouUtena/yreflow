@@ -53,3 +53,11 @@ class UIProtocol(Protocol):
     async def log_raw(self, text: str) -> None:
         """Log raw protocol text (debug)."""
         ...
+
+    async def update_connection_status(self, status: str) -> None:
+        """Update connection indicator. status: 'connected', 'disconnected', 'reconnecting'."""
+        ...
+
+    async def blink_connection_indicator(self) -> None:
+        """Flash the connection indicator to show activity."""
+        ...

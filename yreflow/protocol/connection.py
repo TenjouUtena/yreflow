@@ -255,6 +255,7 @@ class WolferyConnection:
         self.wsock = None
         await self.event_bus.publish("connection.closed")
         self.log_to_file("CONNECTION CLOSED.")
+        
 
     async def _on_message(self, message: str) -> None:
         await self.event_bus.publish("raw.message", text=message)
@@ -361,6 +362,7 @@ class WolferyConnection:
 
         if self.state == State.SUBSCRIBE:
             self.state = State.CON
+            await self.event_bus.publish("connection.established")
             for s in self.default_subscriptions:
                 await self.send(s)
 

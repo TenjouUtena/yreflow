@@ -6,6 +6,8 @@ from textual.containers import Horizontal
 from textual.widgets import Static
 from textual.message import Message
 
+from .connection_indicator import ConnectionIndicator
+
 
 class CharacterButton(Static):
     """A single character button in the CharacterBar."""
@@ -102,6 +104,7 @@ class CharacterBar(Horizontal):
         self._buttons: dict[str, CharacterButton] = {}
 
     def compose(self):
+        yield ConnectionIndicator(id="connection-indicator")
         yield AddCharacterButton(id="add-char-btn")
 
     async def add_character(self, character_id: str, name: str) -> None:
