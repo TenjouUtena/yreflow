@@ -125,6 +125,7 @@ class WolferyCommands(Provider):
 
 
 _UNIMPORTANT_STYLES = {"sleep", "leave", "arrive", "travel", "action", "wakeup"}
+_CONSOLE_ID = "__console__"
 
 
 class WolferyApp(App):
@@ -212,6 +213,9 @@ class WolferyApp(App):
 
         input_bar.focus()
 
+        if config.get("console_enabled", False):
+            await self._create_console_tab()
+
         if self.controller:
             if self.controller.connection.auth_mode == "token":
                 self.run_worker(self.controller.start(), exclusive=True, name="websocket")
@@ -223,6 +227,56 @@ class WolferyApp(App):
         """Show character select if no characters appeared after connect."""
         if not self.character_order and self.controller and self.controller.connection.player:
             self.action_open_character_select()
+
+    # --- Console tab ---
+
+    async def _create_console_tab(self) -> None:
+        """Create the console tab (no collapsible, just a single message view)."""
+        if _CONSOLE_ID in self.character_views:
+            return
+        main_view = MessageView(
+            id=f"main-{_CONSOLE_ID}", classes="char-main-messages",
+        )
+        container = Vertical(id=f"char-container-{_CONSOLE_ID}")
+        msg_col = self.query_one("#message-column", Vertical)
+        await msg_col.mount(container)
+        await container.mount(main_view)
+        container.display = False
+
+        self.character_views[_CONSOLE_ID] = {
+            "main": main_view,
+            "container": container,
+        }
+        self.unread_counts[_CONSOLE_ID] = 0
+        self.urgent_unreads[_CONSOLE_ID] = False
+        self.character_order.insert(0, _CONSOLE_ID)
+
+        char_bar = self.query_one("#character-bar", CharacterBar)
+        await char_bar.add_character(_CONSOLE_ID, "Console", console=True)
+
+    async def _remove_console_tab(self) -> None:
+        """Remove the console tab."""
+        if _CONSOLE_ID not in self.character_views:
+            return
+        views = self.character_views[_CONSOLE_ID]
+        await views["container"].remove()
+        char_bar = self.query_one("#character-bar", CharacterBar)
+        char_bar.remove_character(_CONSOLE_ID)
+        del self.character_views[_CONSOLE_ID]
+        del self.unread_counts[_CONSOLE_ID]
+        del self.urgent_unreads[_CONSOLE_ID]
+        self.character_order.remove(_CONSOLE_ID)
+        if self.active_character == _CONSOLE_ID:
+            self.active_character = None
+            if self.character_order:
+                self._switch_to_character(self.character_order[0])
+
+    async def toggle_console_tab(self, enabled: bool) -> None:
+        """Create or remove the console tab (called from settings)."""
+        if enabled:
+            await self._create_console_tab()
+        else:
+            await self._remove_console_tab()
 
     def _on_login_result(self, credentials: tuple[str, str] | None) -> None:
         """Handle login screen dismissal."""
@@ -324,6 +378,11 @@ class WolferyApp(App):
         # Switch input history to this character
         input_bar = self.query_one("#input-bar", InputBar)
         input_bar.set_active_character(character)
+
+        if character == _CONSOLE_ID:
+            # Console has no nav panel or room context
+            input_bar.set_nav_mode(False)
+            return
 
         # Sync nav mode with new character's nav panel state
         nav_panel = self.character_views[character].get("nav_panel")
@@ -660,6 +719,11 @@ class WolferyApp(App):
         if self.active_character and self.active_character in self.character_views:
             view = self.character_views[self.active_character]["main"]
             view.write(f"[yellow]{text}[/yellow]")
+        # Also write to console tab (if it exists and isn't already the active tab)
+        if _CONSOLE_ID in self.character_views and self.active_character != _CONSOLE_ID:
+            self.character_views[_CONSOLE_ID]["main"].write(f"[yellow]{text}[/yellow]")
+            self.unread_counts[_CONSOLE_ID] = self.unread_counts.get(_CONSOLE_ID, 0) + 1
+            self._update_unread_display(_CONSOLE_ID)
 
     async def notify(self, text: str, character: str | None = None, **kwargs) -> None:
         target = character or self.active_character
@@ -672,6 +736,12 @@ class WolferyApp(App):
             if character is not None:
                 self.urgent_unreads[target] = True
             self._update_unread_display(target)
+        # Also write to console tab
+        if _CONSOLE_ID in self.character_views and target != _CONSOLE_ID:
+            self.character_views[_CONSOLE_ID]["main"].write(f"[bold yellow]>> {text}[/bold yellow]")
+            if self.active_character != _CONSOLE_ID:
+                self.unread_counts[_CONSOLE_ID] = self.unread_counts.get(_CONSOLE_ID, 0) + 1
+                self._update_unread_display(_CONSOLE_ID)
 
     async def update_room(self) -> None:
         self._rebuild_sidebar()

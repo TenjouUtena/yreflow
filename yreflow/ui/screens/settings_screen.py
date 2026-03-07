@@ -71,6 +71,7 @@ class SettingsScreen(ModalScreen[None]):
         ("Spellcheck", "spellcheck_enabled"),
         ("Markup Preview", "markup_preview_enabled"),
         ("Auto-Reconnect", "auto_reconnect"),
+        ("Console Tab", "console_enabled"),
     ]
 
     def compose(self):
@@ -98,6 +99,8 @@ class SettingsScreen(ModalScreen[None]):
             input_bar = self.app.query_one("#input-bar", InputBar)
             input_bar.set_highlighter_state("markup", event.value)
             input_bar.refresh()
+        elif key == "console_enabled":
+            self.app.run_worker(self.app.toggle_console_tab(event.value))
 
     def action_close(self) -> None:
         self.dismiss(None)
