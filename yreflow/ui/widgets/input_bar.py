@@ -103,6 +103,8 @@ class InputBar(Input):
             self.value = self.value[:self._autocomplete_to+1]
         else:
             lookup = self.value.split(' ')[-1]
+            if lookup[0] in '@':
+                lookup = lookup[1:]
 
             # If there's nothing to autocomplete, just stop.
             if not lookup or len(lookup) < 3:

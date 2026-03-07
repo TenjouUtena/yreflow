@@ -98,6 +98,10 @@ class CommandHandler:
                     lambda cmd: {"msg": cmd[8:]},
                 ),
                 (
+                    lambda cmd: cmd.strip().startswith("to "),
+                    lambda cmd: {"msg": cmd[3:]},
+                ),
+                (
                     lambda cmd: cmd.strip().startswith("@"),
                     lambda cmd: {"msg": cmd[1:]},
                 ),
@@ -315,7 +319,7 @@ class CommandHandler:
         if not m:
             return None
         names = [n.strip() for n in m.group(1).split(",") if n.strip()]
-        msg = m.group(2)
+        msg = m.group(2).strip()
         pose = False
         ooc = False
 
