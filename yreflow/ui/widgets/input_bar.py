@@ -103,14 +103,16 @@ class InputBar(Input):
             self.value = self.value[:self._autocomplete_to+1]
         else:
             lookup = self.value.split(' ')[-1]
+            if not lookup:
+                return
             if lookup[0] in '@':
                 lookup = lookup[1:]
 
             # If there's nothing to autocomplete, just stop.
-            if not lookup or len(lookup) < 3:
+            if not lookup:
                 return
 
-            self._autocomplete_to = self.cursor_position
+            self._autocomplete_to = self.cursor_position-1
             self._autocomplete_length = len(lookup)
 
             try:
@@ -128,7 +130,7 @@ class InputBar(Input):
 
     async def _on_key(self, event: Key) -> None:
         if event.key == 'backspace' and self._autocompleting:
-            self.value = self.value[0:self._autocomplete_to+1]
+            self.value = self.value[0:self._autocomplete_to+2]
             self.cursor_position = len(self.value)
         self._autocompleting = False
 
