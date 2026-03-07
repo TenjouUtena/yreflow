@@ -49,6 +49,7 @@ class Controller:
         self.event_bus.subscribe(r"^auth\.failed$", self._on_auth_failed)
         self.event_bus.subscribe(r"^auth\.token_expired$", self._on_token_expired)
         self.event_bus.subscribe(r"^system\.text$", self._on_system_text)
+        self.event_bus.subscribe(r"^protocol\.error$", self._on_protocol_error)
 
         # Rebuild sidebar when any character's LFRP or idle status changes
         self.store.add_watch(r"^core\.char\.[^.]+\.lfrp", self._on_char_changed)
@@ -155,6 +156,12 @@ class Controller:
 
     async def _on_system_text(self, event_name: str, text: str, **kw) -> None:
         await self.ui.display_system_text(text)
+
+    async def _on_protocol_error(self, event_name: str, data: dict, **kw) -> None:
+        error = data.get("error", {})
+        code = error.get("code", "")
+        message = error.get("message", "Unknown error")
+        await self.ui.display_system_text(f"Protocol error: {message} ({code})")
 
     async def _on_char_changed(self, path: str, payload) -> None:
         await self.ui.update_watch_list()

@@ -5,7 +5,8 @@ Uses a tiered backend system for spell checking:
 2. pyenchant (cross-platform) — supports locale-specific dictionaries
 3. pyspellchecker (fallback) — American English only
 
-Lazy-loads the checker on first use to avoid startup cost.
+Eagerly loads the checker at construction time so the import cost
+is paid at startup rather than blocking the UI thread mid-keystroke.
 """
 
 import locale
@@ -120,10 +121,11 @@ def _create_backend():
             return _NSSpellBackend()
         except ImportError:
             pass
-    try:
-        return _EnchantBackend()
-    except ImportError:
-        pass
+    if sys.platform != "win32":
+        try:
+            return _EnchantBackend()
+        except ImportError:
+            pass
     return _PySpellBackend()
 
 
@@ -139,24 +141,16 @@ class SpellCheckHighlighter(Highlighter):
     """
 
     def __init__(self) -> None:
-        self._checker = None  # lazy-loaded backend
+        self._checker = _create_backend()
         self._custom_words: set[str] = set()
         # Cache: plain text -> list of (start, end) spans
         self._cache_key: str = ""
         self._cache_spans: list[tuple[int, int]] = []
 
-    def _ensure_checker(self):
-        """Lazy-load spellcheck backend on first use."""
-        if self._checker is None:
-            self._checker = _create_backend()
-            if self._custom_words:
-                self._checker.add_words(self._custom_words)
-
     def update_custom_words(self, words: set[str]) -> None:
         """Replace the custom dictionary (character names, game terms, etc.)."""
         self._custom_words = {w.lower() for w in words if w}
-        if self._checker is not None:
-            self._checker.add_words(self._custom_words)
+        self._checker.add_words(self._custom_words)
         # Invalidate cache since known-words changed
         self._cache_key = ""
 
@@ -179,8 +173,6 @@ class SpellCheckHighlighter(Highlighter):
 
     def _find_misspelled_spans(self, plain: str) -> list[tuple[int, int]]:
         """Find (start, end) spans of misspelled words."""
-        self._ensure_checker()
-
         offset = self._content_offset(plain)
         prose = plain[offset:]
 

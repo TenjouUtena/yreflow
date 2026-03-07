@@ -113,6 +113,8 @@ class SettingsScreen(ModalScreen[None]):
 
     BINDINGS = [
         Binding("escape", "close", "Close"),
+        Binding("up", "focus_previous", "Previous", show=False, priority=True),
+        Binding("down", "focus_next", "Next", show=False, priority=True),
     ]
 
     SETTINGS = [
