@@ -29,6 +29,9 @@ dependencies = [
     "httpx>=0.27",
     "pyspellchecker>=0.8",
     "unicodeitplus>=0.3.1",
+    "textual-image>=0.8.5",
+    "requests>=2.32.5",
+    "pillow>=12.1.1",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +46,11 @@ Repository = "https://github.com/TenjouUtena/yreflow"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pyinstrument>=5.1.2",
+]
 
 [project.scripts]
 yreflow = "yreflow.main:main"

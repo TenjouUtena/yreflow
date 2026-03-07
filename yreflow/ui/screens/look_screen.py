@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import io
+
+import requests
+from PIL import Image as PILImage
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Static, Button, TabbedContent, TabPane
 from textual.containers import Vertical, VerticalScroll
+from textual_image.widget import Image as TImage
 
 from collections.abc import Callable
 
@@ -59,6 +65,11 @@ class LookScreen(ModalScreen):
     .look-tag-dislike {
         color: red;
     }
+    #look-avatar {
+        height: 20;
+        width: 100%;
+        margin-bottom: 1;
+    }
     #close-btn {
         margin-top: 1;
         width: 100%;
@@ -78,6 +89,8 @@ class LookScreen(ModalScreen):
         super().__init__(**kwargs)
         self.data = data
         self._on_url = on_url
+        self._cached_image: PILImage.Image | None = None
+        self._cached_image_url: str = ""
 
     def compose(self):
         with Vertical(id="look-container"):
@@ -164,7 +177,25 @@ class LookScreen(ModalScreen):
             )
 
     async def _mount_character(self, body: VerticalScroll) -> None:
-        desc = self.data.get("desc", "")
+        image_url = self.data.get("image_url", "")
+        desc = self.data.get("desc","")
+        if image_url:
+            try:
+                if image_url != self._cached_image_url or self._cached_image is None:
+                    cookies = {}
+                    auth_token = self.data.get("auth_token", "")
+                    if auth_token:
+                        cookies["wolfery-auth-token"] = auth_token
+                    resp = await asyncio.to_thread(
+                        requests.get, image_url, timeout=10, cookies=cookies
+                    )
+                    resp.raise_for_status()
+                    self._cached_image = PILImage.open(io.BytesIO(resp.content))
+                    self._cached_image_url = image_url
+                await body.mount(TImage(self._cached_image, id="look-avatar"))
+            except Exception:
+                pass
+
         if desc:
             await body.mount(
                 Static(format_message(desc, on_url=self._on_url, **formatter_settings()), classes="look-text", markup=True)

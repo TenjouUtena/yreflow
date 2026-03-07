@@ -884,11 +884,25 @@ class CommandHandler:
         self._look_watch_cb = _on_char_update
         self.store.add_watch(rf"core\.char\.{char_id}\.", _on_char_update)
 
+        # Image model lives at core.char.img.* (separate from char path)
+        try:
+            image_ref = self.store.get_character_attribute(char_id, "image")
+            if isinstance(image_ref, dict) and "rid" in image_ref:
+                img_path = image_ref["rid"].replace(".", r"\.")
+                self._look_img_watch_cb = _on_char_update
+                self.store.add_watch(rf"{img_path}", _on_char_update)
+        except (KeyError, TypeError):
+            pass
+
     def _remove_look_watch(self) -> None:
         cb = getattr(self, "_look_watch_cb", None)
         if cb is not None:
             self.store.remove_watch(cb)
             self._look_watch_cb = None
+        img_cb = getattr(self, "_look_img_watch_cb", None)
+        if img_cb is not None:
+            self.store.remove_watch(img_cb)
+            self._look_img_watch_cb = None
 
     def _gather_character_data(self, char_id: str) -> dict:
         """Read character attributes from the store."""
@@ -923,6 +937,18 @@ class CommandHandler:
         except (KeyError, TypeError):
             pass
 
+        # Image URL from RID chain
+        image_url = ""
+        try:
+            image_ref = s.get_character_attribute(char_id, "image")
+            if isinstance(image_ref, dict) and "rid" in image_ref:
+                image_model = s.get(image_ref["rid"])
+                href = image_model.get("href", "")
+                if href:
+                    image_url = href
+        except (KeyError, TypeError):
+            pass
+
         return {
             "type": "character",
             "char_id": char_id,
@@ -932,4 +958,6 @@ class CommandHandler:
             "desc": desc,
             "about": about,
             "tags": tags,
+            "image_url": image_url,
+            "auth_token": self.conn.token or "",
         }
