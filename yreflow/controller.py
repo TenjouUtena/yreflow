@@ -14,6 +14,7 @@ from .protocol.connection import WolferyConnection
 from .protocol.controlled_char import ControlledChar
 from .protocol.http_auth import obtain_token
 from .commands.handler import CommandHandler, CommandResult
+from .commands.console_handler import ConsoleHandler
 from .url_catcher import UrlCatcher
 from .config import load_config, save_token, clear_token
 
@@ -28,6 +29,7 @@ class Controller:
         self.store = ModelStore(event_bus=self.event_bus)
         self.connection = WolferyConnection(config, self.store, self.event_bus)
         self.commands = CommandHandler(self.connection, self.store)
+        self.console_commands = ConsoleHandler(self.connection, self.store)
         self.url_catcher = UrlCatcher(self.event_bus)
         self._reconnect_delay = 5.0
 
@@ -67,6 +69,9 @@ class Controller:
         if cc is None:
             cc = ControlledChar(char_id=ctrl_id)
         return await self.commands.process_command(command, cc)
+
+    async def handle_console_command(self, command: str) -> CommandResult:
+        return await self.console_commands.process_command(command)
 
     # --- Event handlers ---
 

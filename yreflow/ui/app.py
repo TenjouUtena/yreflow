@@ -27,6 +27,8 @@ from ..config import load_config, save_preference
 from ..formatter import format_message
 
 
+_ELIDE_SPACE_CHARS = frozenset("',.!?:;-\u2019")
+
 _NAMED_COLORS: dict[str, tuple[int, int, int]] = {
     "black": (0, 0, 0), "white": (255, 255, 255),
     "red": (255, 0, 0), "green": (0, 128, 0), "blue": (0, 0, 255),
@@ -313,41 +315,53 @@ class WolferyApp(App):
         input_bar = self.query_one("#input-bar", InputBar)
         input_bar.push_history(command)
 
-        if self.controller and self.active_character:
-            # Nav mode: check if typed text matches an exit name
-            views = self.character_views.get(self.active_character, {})
-            nav_panel = views.get("nav_panel")
-            if nav_panel and nav_panel.display:
-                matched = nav_panel.find_exit_by_key(command)
-                if matched:
-                    cc = self.controller.connection.get_controlled_char(self.active_character)
-                    if cc:
-                        await self.controller.connection.send(
-                            f"call.{cc.ctrl_path}.useExit",
-                            {"exitId": matched["id"]},
-                        )
-                        return
+        if not self.controller or not self.active_character:
+            return
 
-            result = await self.controller.handle_command(command, self.active_character)
-            if result and result.look_data:
-                self.push_screen(LookScreen(result.look_data, on_url=self._publish_url))
-            if result and result.open_profile_select:
-                cc = self.controller.connection.get_controlled_char(self.active_character)
-                if cc is None:
-                    from ..protocol.controlled_char import ControlledChar
-                    cc = ControlledChar(char_id=self.active_character)
-                self.push_screen(
-                    ProfileSelectScreen(
-                        self.controller.store,
-                        self.controller.connection,
-                        cc,
-                    ),
-                    callback=self._on_profile_selected,
-                )
+        # Console tab: separate command handler
+        if self.active_character == _CONSOLE_ID:
+            result = await self.controller.handle_console_command(command)
             if result and result.display_text:
                 await self.display_system_text(result.display_text)
             if result and result.notification:
                 await self.notify(result.notification)
+            return
+
+        # Character/puppet tabs
+        # Nav mode: check if typed text matches an exit name
+        views = self.character_views.get(self.active_character, {})
+        nav_panel = views.get("nav_panel")
+        if nav_panel and nav_panel.display:
+            matched = nav_panel.find_exit_by_key(command)
+            if matched:
+                cc = self.controller.connection.get_controlled_char(self.active_character)
+                if cc:
+                    await self.controller.connection.send(
+                        f"call.{cc.ctrl_path}.useExit",
+                        {"exitId": matched["id"]},
+                    )
+                    return
+
+        result = await self.controller.handle_command(command, self.active_character)
+        if result and result.look_data:
+            self.push_screen(LookScreen(result.look_data, on_url=self._publish_url))
+        if result and result.open_profile_select:
+            cc = self.controller.connection.get_controlled_char(self.active_character)
+            if cc is None:
+                from ..protocol.controlled_char import ControlledChar
+                cc = ControlledChar(char_id=self.active_character)
+            self.push_screen(
+                ProfileSelectScreen(
+                    self.controller.store,
+                    self.controller.connection,
+                    cc,
+                ),
+                callback=self._on_profile_selected,
+            )
+        if result and result.display_text:
+            await self.display_system_text(result.display_text)
+        if result and result.notification:
+            await self.notify(result.notification)
 
     def _on_profile_selected(self, profile_name: str | None) -> None:
         if profile_name:
@@ -661,6 +675,7 @@ class WolferyApp(App):
         focus_color: str | None = None,
     ) -> str:
         ts = self._format_timestamp(timestamp, focus_color)
+        sep = "" if msg and msg[0] in _ELIDE_SPACE_CHARS else " "
 
         if is_ooc and style not in ("ooc",):
             msg = f"[dim]{msg}[/dim]"
@@ -669,29 +684,29 @@ class WolferyApp(App):
             return f'{ts}[bold cyan]{sender}[/bold cyan] says, "{msg}"'
 
         if style == "pose":
-            return f"{ts}[bold cyan]{sender}[/bold cyan] {msg}"
+            return f"{ts}[bold cyan]{sender}[/bold cyan]{sep}{msg}"
 
         if style == "ooc":
             if has_pose:
-                return f"{ts}[dim]\\[OOC][/dim] [bold cyan]{sender}[/bold cyan] [dim]{msg}[/dim]"
+                return f"{ts}[dim]\\[OOC][/dim] [bold cyan]{sender}[/bold cyan]{sep}[dim]{msg}[/dim]"
             return f'{ts}[dim]\\[OOC][/dim] [bold cyan]{sender}[/bold cyan] [dim]says, "{msg}"[/dim]'
 
         if style == "whisper":
             label = f"[magenta]whisper {target_name}[/magenta]"
             if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}) {msg}"
+                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
             return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) whispers, "{msg}"'
 
         if style == "message":
             label = f"[yellow]msg {target_name}[/yellow]"
             if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}) {msg}"
+                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
             return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) messages, "{msg}"'
 
         if style == "address":
             label = f"[green]@{target_name}[/green]"
             if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}) {msg}"
+                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
             return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) says, "{msg}"'
 
         if style == "describe":
