@@ -26,6 +26,8 @@ class CommandResult:
     look_data: dict | None = None
     open_profile_select: bool = False
     display_text: str | None = None
+    open_settings: bool = False
+    toggle_nav: bool = False
 
 
 class CommandHandler:
@@ -268,6 +270,20 @@ class CommandHandler:
                 (lambda cmd: cmd.startswith("lfrp "), lambda cmd: cmd[5:]),
             ],
             "function": self.handle_lfrp,
+        }
+
+        patterns["settings"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "settings", lambda cmd: ""),
+            ],
+            "function": self.handle_settings,
+        }
+
+        patterns["nav"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "nav", lambda cmd: ""),
+            ],
+            "function": self.handle_nav,
         }
 
         for style in patterns:
@@ -761,6 +777,12 @@ class CommandHandler:
         )
         return CommandResult(display_text="No longer looking for RP.")
 
+    async def handle_settings(self, content: str, cc: ControlledChar) -> CommandResult:
+        return CommandResult(open_settings=True)
+
+    async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
+        return CommandResult(toggle_nav=True)
+
     async def _lookup_result(self, payload) -> None:
         output = f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
         for char in payload.get("chars",[]):
@@ -852,6 +874,22 @@ class CommandHandler:
         data = self._gather_character_data(char_id)
         await self.conn.event_bus.publish("look.result", data=data)
 
+        # Watch for store updates to this character (e.g. desc arriving late)
+        self._remove_look_watch()
+
+        async def _on_char_update(path, payload):
+            updated = self._gather_character_data(char_id)
+            await self.conn.event_bus.publish("look.update", data=updated)
+
+        self._look_watch_cb = _on_char_update
+        self.store.add_watch(rf"core\.char\.{char_id}\.", _on_char_update)
+
+    def _remove_look_watch(self) -> None:
+        cb = getattr(self, "_look_watch_cb", None)
+        if cb is not None:
+            self.store.remove_watch(cb)
+            self._look_watch_cb = None
+
     def _gather_character_data(self, char_id: str) -> dict:
         """Read character attributes from the store."""
         s = self.store
@@ -887,6 +925,7 @@ class CommandHandler:
 
         return {
             "type": "character",
+            "char_id": char_id,
             "name": full_name,
             "species": species.capitalize() if species else "",
             "gender": gender.capitalize() if gender else "",

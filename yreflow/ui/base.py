@@ -42,7 +42,7 @@ class UIProtocol(Protocol):
         """Return set of character IDs that have active tabs."""
         ...
 
-    async def display_look(self, data: dict) -> None:
+    async def display_look(self, data: dict, on_dismiss=None):
         """Display the look modal (room or character)."""
         ...
 
