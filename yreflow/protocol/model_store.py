@@ -19,6 +19,9 @@ class ModelStore:
     def add_watch(self, pattern: str, callback) -> None:
         self._event_watches.append({"id": pattern, "function": callback})
 
+    def remove_watch(self, callback) -> None:
+        self._event_watches = [w for w in self._event_watches if w["function"] is not callback]
+
     def get(self, path: str) -> Any:
         hier = path.split(".")
         node = self.models

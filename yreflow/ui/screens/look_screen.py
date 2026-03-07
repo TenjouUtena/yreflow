@@ -210,6 +210,16 @@ class LookScreen(ModalScreen):
                 Static("[dim]No information available.[/dim]", markup=True)
             )
 
+    async def update_data(self, data: dict) -> None:
+        """Re-render the body with updated character data."""
+        self.data = data
+        body = self.query_one("#look-body", VerticalScroll)
+        await body.remove_children()
+        if data["type"] == "room":
+            await self._mount_room(body)
+        elif data["type"] == "character":
+            await self._mount_character(body)
+
     def action_close_screen(self) -> None:
         self.dismiss()
 

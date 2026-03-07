@@ -335,6 +335,10 @@ class WolferyApp(App):
                 ),
                 callback=self._on_profile_selected,
             )
+        if result and result.open_settings:
+            self.action_open_settings()
+        if result and result.toggle_nav:
+            await self.action_toggle_nav_panel()
         if result and result.display_text:
             await self.display_system_text(result.display_text)
         if result and result.notification:
@@ -853,8 +857,10 @@ class WolferyApp(App):
     def get_known_characters(self) -> set[str]:
         return set(self.character_views.keys())
 
-    async def display_look(self, data: dict) -> None:
-        self.push_screen(LookScreen(data, on_url=self._publish_url))
+    async def display_look(self, data: dict, on_dismiss=None) -> "LookScreen":
+        screen = LookScreen(data, on_url=self._publish_url)
+        self.push_screen(screen, callback=lambda _: on_dismiss() if on_dismiss else None)
+        return screen
 
     async def log_raw(self, text: str) -> None:
         # Debug logging -- no-op for now

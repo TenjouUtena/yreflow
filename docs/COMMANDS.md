@@ -315,11 +315,36 @@ Release/suspend your character (log them out).
 
 ### sweep
 
-Clear the room view.
+Clear the room view, or sweep a specific character out of the room.
 
 | Aliases | `sweep` |
 |---------|------|
-| Syntax  | `sweep` |
+| Syntax  | `sweep` or `sweep <name>` |
+
+With no argument, clears the room view. With a name, sweeps that character from the room.
+
+```
+sweep
+sweep Alice
+```
+
+## UI
+
+### settings
+
+Open the settings screen.
+
+| Aliases | `settings` |
+|---------|------------|
+| Syntax  | `settings` |
+
+### nav
+
+Toggle the navigation panel open or closed.
+
+| Aliases | `nav` |
+|---------|-------|
+| Syntax  | `nav` |
 
 ## Name Matching
 
