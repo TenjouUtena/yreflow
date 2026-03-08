@@ -1,0 +1,312 @@
+# Command parsing test cases for detect_command_type.
+# Each case specifies input text and expected style.
+
+# --- Say ---
+[[case]]
+description = "say with prefix"
+input = "say hello world"
+expected_style = "say"
+
+[[case]]
+description = "say with double quote"
+input = '"hello there'
+expected_style = "say"
+
+[[case]]
+description = "say with left smart quote"
+input = "\u201chello"
+expected_style = "say"
+
+[[case]]
+description = "say with right smart quote"
+input = "\u201dhello"
+expected_style = "say"
+
+# --- Pose ---
+[[case]]
+description = "pose with colon"
+input = ":waves happily."
+expected_style = "pose"
+
+[[case]]
+description = "pose with prefix"
+input = "pose stretches."
+expected_style = "pose"
+
+# --- OOC ---
+[[case]]
+description = "ooc with prefix"
+input = "ooc brb a moment"
+expected_style = "ooc"
+
+[[case]]
+description = "ooc pose with >:"
+input = ">:shrugs"
+expected_style = "ooc"
+
+[[case]]
+description = "ooc pose with :>"
+input = ":>laughs"
+expected_style = "ooc"
+
+[[case]]
+description = "ooc with >"
+input = ">be right back"
+expected_style = "ooc"
+
+[[case]]
+description = "ooc pose with prefix"
+input = "ooc :nods"
+expected_style = "ooc"
+
+# --- Whisper ---
+[[case]]
+description = "whisper with w"
+input = "w Thorn=hello"
+expected_style = "whisper"
+
+[[case]]
+description = "whisper with wh"
+input = "wh Thorn=hello"
+expected_style = "whisper"
+
+# --- Page ---
+[[case]]
+description = "page with p"
+input = "p Pip=hey there"
+expected_style = "page"
+
+[[case]]
+description = "page with m"
+input = "m Pip=hey there"
+expected_style = "page"
+
+# --- Address ---
+[[case]]
+description = "address with prefix"
+input = "address Thorn=hello"
+expected_style = "address"
+
+[[case]]
+description = "address with to"
+input = "to Thorn=hello"
+expected_style = "address"
+
+[[case]]
+description = "address with @"
+input = "@Thorn=hello"
+expected_style = "address"
+
+# --- Home ---
+[[case]]
+description = "home command"
+input = "home"
+expected_style = "home"
+
+# --- Teleport ---
+[[case]]
+description = "teleport with prefix"
+input = "teleport tavern"
+expected_style = "teleport"
+
+[[case]]
+description = "teleport with t"
+input = "t tavern"
+expected_style = "teleport"
+
+# --- Sweep ---
+[[case]]
+description = "sweep no args"
+input = "sweep"
+expected_style = "sweep"
+
+[[case]]
+description = "sweep with target"
+input = "sweep Thorn"
+expected_style = "sweep"
+
+# --- Go ---
+[[case]]
+description = "go command"
+input = "go north"
+expected_style = "go"
+
+# --- Status ---
+[[case]]
+description = "status no args"
+input = "status"
+expected_style = "status"
+
+[[case]]
+description = "status with text"
+input = "status Looking for RP"
+expected_style = "status"
+
+# --- Release ---
+[[case]]
+description = "quit command"
+input = "quit"
+expected_style = "release"
+
+[[case]]
+description = "sleep command"
+input = "sleep"
+expected_style = "release"
+
+# --- Focus ---
+[[case]]
+description = "focus command"
+input = "focus Thorn"
+expected_style = "focus"
+
+# --- Unfocus ---
+[[case]]
+description = "unfocus command"
+input = "unfocus Thorn"
+expected_style = "unfocus"
+
+# --- Summon ---
+[[case]]
+description = "summon command"
+input = "summon Pip"
+expected_style = "summon"
+
+# --- Join ---
+[[case]]
+description = "join command"
+input = "join Pip"
+expected_style = "join"
+
+# --- Lead ---
+[[case]]
+description = "lead command"
+input = "lead Pip"
+expected_style = "lead"
+
+# --- Follow ---
+[[case]]
+description = "follow command"
+input = "follow Pip"
+expected_style = "follow"
+
+# --- Profile ---
+[[case]]
+description = "profile no args"
+input = "profile"
+expected_style = "profile"
+
+[[case]]
+description = "profile with name"
+input = "profile wolfform"
+expected_style = "profile"
+
+[[case]]
+description = "morph alias"
+input = "morph wolfform"
+expected_style = "profile"
+
+# --- Look ---
+[[case]]
+description = "look no args"
+input = "look"
+expected_style = "look"
+
+[[case]]
+description = "look short alias"
+input = "l"
+expected_style = "look"
+
+[[case]]
+description = "look at target"
+input = "look Thorn"
+expected_style = "look"
+
+[[case]]
+description = "l at target"
+input = "l Thorn"
+expected_style = "look"
+
+# --- Laston ---
+[[case]]
+description = "laston command"
+input = "laston Pip"
+expected_style = "laston"
+
+# --- WA ---
+[[case]]
+description = "wa command"
+input = "wa"
+expected_style = "wa"
+
+[[case]]
+description = "whereat command"
+input = "whereat"
+expected_style = "wa"
+
+# --- Lookup ---
+[[case]]
+description = "lookup command"
+input = "lookup wolf"
+expected_style = "lookup"
+
+# --- Stop follow ---
+[[case]]
+description = "stop follow"
+input = "stop follow"
+expected_style = "stop_follow"
+
+# --- Stop lead ---
+[[case]]
+description = "stop lead"
+input = "stop lead"
+expected_style = "stop_lead"
+
+[[case]]
+description = "stop lead with target"
+input = "stop lead Pip"
+expected_style = "stop_lead"
+
+# --- LFRP ---
+[[case]]
+description = "lfrp no args"
+input = "lfrp"
+expected_style = "lfrp"
+
+[[case]]
+description = "lfrp with message"
+input = "lfrp Looking for adventure RP"
+expected_style = "lfrp"
+
+# --- Stop LFRP ---
+[[case]]
+description = "stop lfrp"
+input = "stop lfrp"
+expected_style = "stop_lfrp"
+
+# --- Settings ---
+[[case]]
+description = "settings command"
+input = "settings"
+expected_style = "settings"
+
+# --- Describe ---
+[[case]]
+description = "describe command"
+input = "describe A cat sits on the mat."
+expected_style = "describe"
+
+[[case]]
+description = "desc alias"
+input = "desc The door creaks open."
+expected_style = "describe"
+
+[[case]]
+description = "spoof alias"
+input = "spoof Wind howls through the trees."
+expected_style = "describe"
+
+# --- Nav ---
+[[case]]
+description = "nav command"
+input = "nav"
+expected_style = "nav"

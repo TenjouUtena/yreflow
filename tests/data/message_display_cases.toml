@@ -1,0 +1,234 @@
+# Message display formatting test cases for format_line.
+# Each case specifies style, sender, msg, and what the output should contain.
+
+[[case]]
+description = "say message"
+style = "say"
+sender = "Thorn"
+msg = "Hello there"
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "13:22"
+expected_contains = 'says, "Hello there"'
+
+[[case]]
+description = "pose message"
+style = "pose"
+sender = "Thorn"
+msg = "waves happily."
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "13:22"
+expected_contains = "Thorn"
+expected_contains_2 = "waves happily."
+
+[[case]]
+description = "pose with elided space"
+style = "pose"
+sender = "Thorn"
+msg = "'s tail wags."
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "13:22"
+expected_not_contains = "Thorn[/bold cyan] 's"
+expected_contains = "Thorn[/bold cyan]'s"
+
+[[case]]
+description = "ooc say"
+style = "ooc"
+sender = "Pip"
+msg = "brb"
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "14:00"
+expected_contains = "[OOC]"
+expected_contains_2 = 'says, "brb"'
+
+[[case]]
+description = "ooc pose"
+style = "ooc"
+sender = "Pip"
+msg = "shrugs"
+target_name = ""
+has_pose = true
+is_ooc = false
+timestamp = "14:00"
+expected_contains = "[OOC]"
+expected_not_contains = "says,"
+
+[[case]]
+description = "whisper plain"
+style = "whisper"
+sender = "Thorn"
+msg = "hey there"
+target_name = "Pip"
+has_pose = false
+is_ooc = false
+timestamp = "14:30"
+expected_contains = 'whispers, "hey there"'
+expected_contains_2 = "whisper Pip"
+
+[[case]]
+description = "whisper pose"
+style = "whisper"
+sender = "Thorn"
+msg = "nods quietly."
+target_name = "Pip"
+has_pose = true
+is_ooc = false
+timestamp = "14:30"
+expected_contains = "nods quietly."
+expected_not_contains = "whispers,"
+
+[[case]]
+description = "message plain"
+style = "message"
+sender = "Pip"
+msg = "hello"
+target_name = "Thorn"
+has_pose = false
+is_ooc = false
+timestamp = "15:00"
+expected_contains = 'messages, "hello"'
+expected_contains_2 = "msg Thorn"
+
+[[case]]
+description = "address plain"
+style = "address"
+sender = "Moss"
+msg = "greetings"
+target_name = "Thorn"
+has_pose = false
+is_ooc = false
+timestamp = "15:10"
+expected_contains = 'says, "greetings"'
+expected_contains_2 = "@Thorn"
+
+[[case]]
+description = "address pose"
+style = "address"
+sender = "Moss"
+msg = "tips hat."
+target_name = "Thorn"
+has_pose = true
+is_ooc = false
+timestamp = "15:10"
+expected_contains = "tips hat."
+expected_not_contains = "says,"
+
+[[case]]
+description = "describe message"
+style = "describe"
+sender = "Thorn Ashvale"
+msg = "A cat sits on the mat."
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "16:00"
+expected_contains = "[italic]"
+expected_contains_2 = "(Thorn Ashvale)"
+
+[[case]]
+description = "arrive message"
+style = "arrive"
+sender = "Pip"
+msg = "arrives from the north."
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "16:30"
+expected_contains = "[dim]"
+expected_contains_2 = "Pip"
+
+[[case]]
+description = "leave message"
+style = "leave"
+sender = "Moss"
+msg = "leaves to the south."
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "16:31"
+expected_contains = "[dim]"
+
+[[case]]
+description = "roll message"
+style = "roll"
+sender = "Thorn"
+msg = "rolls 2d6: 7"
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "17:00"
+expected_contains = "rolls 2d6: 7"
+
+[[case]]
+description = "leadRequest"
+style = "leadRequest"
+sender = "Pip"
+msg = ""
+target_name = "Thorn"
+has_pose = false
+is_ooc = false
+timestamp = "17:30"
+expected_contains = "wants to lead Thorn"
+
+[[case]]
+description = "followRequest"
+style = "followRequest"
+sender = "Moss"
+msg = ""
+target_name = "Pip"
+has_pose = false
+is_ooc = false
+timestamp = "17:31"
+expected_contains = "wants to follow Pip"
+
+[[case]]
+description = "controlRequest"
+style = "controlRequest"
+sender = "Thorn"
+msg = ""
+target_name = "Spark"
+has_pose = false
+is_ooc = false
+timestamp = "17:32"
+expected_contains = "requests control of Spark"
+
+[[case]]
+description = "fallback unknown style"
+style = "unknownstyle"
+sender = "Thorn"
+msg = "some action"
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = "18:00"
+expected_contains = "Thorn"
+expected_contains_2 = "some action"
+
+[[case]]
+description = "empty timestamp"
+style = "say"
+sender = "Pip"
+msg = "hi"
+target_name = ""
+has_pose = false
+is_ooc = false
+timestamp = ""
+expected_not_contains = "[dim]"
+
+[[case]]
+description = "ooc flag on non-ooc style"
+style = "whisper"
+sender = "Thorn"
+msg = "testing ooc"
+target_name = "Pip"
+has_pose = false
+is_ooc = true
+timestamp = "19:00"
+expected_contains = "[dim]testing ooc[/dim]"

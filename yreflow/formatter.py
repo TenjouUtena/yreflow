@@ -307,7 +307,7 @@ def format_message(
             continue
 
         # Superscript: ++text++ (Unicode or highlight)
-        if ch == "+" and next_ch == "+" and not superscript:
+        if ch == "+" and next_ch == "+" and not superscript and "++" in msg_text[c + 2 :]:
             superscript = True
             if superscript_style == "highlight":
                 out += f"[rgb({NAMED_COLORS[superscript_color][0]},{NAMED_COLORS[superscript_color][1]},{NAMED_COLORS[superscript_color][2]})]"
@@ -321,7 +321,7 @@ def format_message(
             continue
 
         # Subscript: --text-- (Unicode or highlight)
-        if ch == "-" and next_ch == "-" and not subscript:
+        if ch == "-" and next_ch == "-" and not subscript and "--" in msg_text[c + 2 :]:
             subscript = True
             if subscript_style == "highlight":
                 out += f"[rgb({NAMED_COLORS[subscript_color][0]},{NAMED_COLORS[subscript_color][1]},{NAMED_COLORS[subscript_color][2]})]"

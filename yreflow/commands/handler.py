@@ -8,10 +8,35 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .name_resolver import parse_name, NameParseException
+
+
+def _relative_time(ms_timestamp: float) -> str:
+    """Convert a millisecond timestamp to a human-readable relative string."""
+    delta = datetime.now(timezone.utc) - datetime.fromtimestamp(ms_timestamp / 1000.0, tz=timezone.utc)
+    seconds = int(delta.total_seconds())
+    if seconds < 60:
+        return f"{seconds} seconds ago"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = hours // 24
+    if days < 14:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    weeks = days // 7
+    if days < 60:
+        return f"{weeks} week{'s' if weeks != 1 else ''} ago"
+    months = days // 30
+    if days < 365:
+        return f"{months} month{'s' if months != 1 else ''} ago"
+    years = days // 365
+    return f"{years} year{'s' if years != 1 else ''} ago"
 
 if TYPE_CHECKING:
     from ..protocol.connection import WolferyConnection
@@ -96,6 +121,10 @@ class CommandHandler:
                 (
                     lambda cmd: cmd.strip().startswith("address "),
                     lambda cmd: {"msg": cmd[8:]},
+                ),
+                (
+                    lambda cmd: cmd.strip().startswith("to "),
+                    lambda cmd: {"msg": cmd[3:]},
                 ),
                 (
                     lambda cmd: cmd.strip().startswith("@"),
@@ -279,6 +308,15 @@ class CommandHandler:
             "function": self.handle_settings,
         }
 
+        patterns["describe"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("describe "), lambda cmd: cmd[9:]),
+                (lambda cmd: cmd.startswith("desc "), lambda cmd: cmd[5:]),
+                (lambda cmd: cmd.startswith("spoof "), lambda cmd: cmd[6:]),
+            ],
+            "function": self.handle_describe,
+        }
+
         patterns["nav"] = {
             "patterns": [
                 (lambda cmd: cmd.strip() == "nav", lambda cmd: ""),
@@ -311,11 +349,11 @@ class CommandHandler:
         Returns (names_list, msg, pose, ooc) or None if unparseable.
         Names may be comma-separated for multi-recipient sends.
         """
-        m = re.match(r"([\w ,]+)=(.*)", raw_msg, re.DOTALL)
+        m = re.match(r"([\w ,-]+)=(.*)", raw_msg, re.DOTALL)
         if not m:
             return None
         names = [n.strip() for n in m.group(1).split(",") if n.strip()]
-        msg = m.group(2)
+        msg = m.group(2).strip()
         pose = False
         ooc = False
 
@@ -734,9 +772,7 @@ class CommandHandler:
                 success=False,
                 notification=f"No last online info for {name_to_check}",
             )
-        last_awake = datetime.fromtimestamp(
-            char_data["lastAwake"] / 1000.0
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        last_awake = _relative_time(char_data["lastAwake"])
         char_name = char_data.get("name", "?")
         if "surname" in char_data:
             char_name += f" {char_data['surname']}"
@@ -750,9 +786,10 @@ class CommandHandler:
         return await self._look_character(content, cc)
 
     async def handle_lookup(self, content, cc: ControlledChar) -> CommandResult:
+        payload = content.split(' ')[0]
         msg_id = await self.conn.send(f"call.core.player.{self.conn.player}.lookupChars",
                              {"extended": True,
-                              "name": content})
+                              "name": payload})
         self.conn.add_message_wait(
             msg_id,
             lambda _result: self._lookup_result(_result)
@@ -783,12 +820,18 @@ class CommandHandler:
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)
 
+    async def handle_describe(self, content: str, cc: ControlledChar) -> CommandResult:
+        await self.conn.send(
+            f"call.{cc.ctrl_path}.describe", {"msg": content}
+        )
+        return CommandResult()
+
     async def _lookup_result(self, payload) -> None:
         output = f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
         for char in payload.get("chars",[]):
-            #output lines
             surname_len = 29 - (len(char['name']) + len(char['surname']))
-            output += f"{char['name']} {char['surname']}{' '*surname_len}{char['gender']:<10}{char['species']:<20}{char['lastAwake']}"
+            last_awake = _relative_time(char['lastAwake'])
+            output += f"{char['name']} {char['surname']}{' '*surname_len}{char['gender']:<10}{char['species']:<20}{last_awake}\n"
         await self.conn.event_bus.publish("system.text", text=output)
 
 
