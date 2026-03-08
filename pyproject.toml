@@ -1,6 +1,6 @@
 [project]
 name = "yreflow"
-version = "0.1.8"
+version = "0.2.0"
 authors = [
     { name="Kredden", email="kredden@proactiveapathy.com" }
 ]
