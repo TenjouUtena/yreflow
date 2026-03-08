@@ -714,8 +714,13 @@ class CommandHandler:
             )
         try:
             room = self.store.get(room_pointer)
-            area_path = room["details"]["area"]["rid"]
-        except KeyError:
+            area_ref = room.get("area", {})
+            if not (isinstance(area_ref, dict) and "rid" in area_ref):
+                details = room.get("details", {})
+                if isinstance(details, dict):
+                    area_ref = details.get("area", {})
+            area_path = area_ref["rid"]
+        except (KeyError, TypeError):
             return CommandResult(
                 success=False, notification=f"Could not determine current area. {room}"
             )
@@ -948,6 +953,11 @@ class CommandHandler:
         try:
             room_model = self.store.get(f"core.room.{room_id}")
             area_ref = room_model.get("area", {})
+            if not (isinstance(area_ref, dict) and "rid" in area_ref):
+                # area may be nested under details
+                details = room_model.get("details", {})
+                if isinstance(details, dict):
+                    area_ref = details.get("area", {})
             if isinstance(area_ref, dict) and "rid" in area_ref:
                 area_path = area_ref["rid"]
                 while area_path:

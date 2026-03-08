@@ -274,6 +274,11 @@ class NavPanel(Widget):
         try:
             room_model = store.get(f"core.room.{room_id}")
             area_ref = room_model.get("area", {})
+            if not (isinstance(area_ref, dict) and "rid" in area_ref):
+                # area may be nested under details
+                details = room_model.get("details", {})
+                if isinstance(details, dict):
+                    area_ref = details.get("area", {})
             if isinstance(area_ref, dict) and "rid" in area_ref:
                 area_path = area_ref["rid"]
                 while area_path:
