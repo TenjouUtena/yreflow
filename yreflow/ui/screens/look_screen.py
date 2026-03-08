@@ -67,6 +67,12 @@ class LookScreen(ModalScreen):
         width: 100%;
         margin-bottom: 1;
     }
+    #whois-avatar {
+        height: auto;
+        width: auto;
+        max-height: 14;
+        margin-bottom: 1;
+    }
     #close-btn {
         margin-top: 1;
         width: 100%;
@@ -257,7 +263,7 @@ class LookScreen(ModalScreen):
                         auth_token=self.data.get("auth_token", ""),
                     )
                     self._cached_image_url = avatar_key
-                await body.mount(TImage(self._cached_image, id="look-avatar"))
+                await body.mount(TImage(self._cached_image, id="whois-avatar"))
             except Exception:
                 pass
 
