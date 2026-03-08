@@ -540,14 +540,11 @@ class CommandHandler:
         return None
 
     async def handle_go(self, exit_name, cc: ControlledChar) -> CommandResult:
-        the_exit = self._find_exit_by_key(cc, exit_name)
-        if not the_exit:
-            return CommandResult(
-                success=False, notification=f"Couldn't go {exit_name}"
-            )
+        # Send exitKey and let the server validate — this supports hidden exits
+        # that aren't in the local model store.
         await self.conn.send(
             f"call.{cc.ctrl_path}.useExit",
-            {"exitId": the_exit["id"]},
+            {"exitKey": exit_name},
         )
         return CommandResult()
 
