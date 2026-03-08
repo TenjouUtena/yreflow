@@ -109,6 +109,8 @@ class Controller:
 
         known = self.ui.get_known_characters()
         for ctrl_id in known - current_ctrl_ids:
+            if ctrl_id.startswith("__"):
+                continue
             await self.ui.remove_character_tab(ctrl_id)
 
     async def _on_tab_needed(self, event_name: str, character: str, **kw) -> None:
