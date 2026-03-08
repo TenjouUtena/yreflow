@@ -589,7 +589,10 @@ class WolferyApp(App):
         else:
             view = views["main"]
 
-        sender = message["frm"].get("name", "???")
+        sender = message["frm"].get("name", "")
+        if style == 'describe':
+            sender = message["frm"].get("name","") + ' ' + message["frm"].get("surname","")
+
         sender_id = message["frm"].get("id", "")
         msg_text = format_message(message.get("msg", ""), on_url=self._publish_url, **formatter_settings())
         j = message.get("j", {})
@@ -691,7 +694,7 @@ class WolferyApp(App):
             return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) says, "{msg}"'
 
         if style == "describe":
-            return f"{ts}[italic]{msg}[/italic]"
+            return f"{ts}[italic]{msg}[/italic] [dim]({sender})[/dim]"
 
         if style in ("arrive", "leave", "travel", "sleep", "action", "wakeup"):
             return f"{ts}[dim][bold]{sender}[/bold] {msg}[/dim]"
