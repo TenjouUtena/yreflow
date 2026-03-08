@@ -46,6 +46,7 @@ class Controller:
         self.event_bus.subscribe(r"^connection\.failed$", self._on_connection_failed)
         self.event_bus.subscribe(r"^look\.result$", self._on_look_result)
         self.event_bus.subscribe(r"^look\.update$", self._on_look_update)
+        self.event_bus.subscribe(r"^whois\.result$", self._on_whois_result)
         self.event_bus.subscribe(r"^auth\.failed$", self._on_auth_failed)
         self.event_bus.subscribe(r"^auth\.token_expired$", self._on_token_expired)
         self.event_bus.subscribe(r"^system\.text$", self._on_system_text)
@@ -148,6 +149,9 @@ class Controller:
         screen = getattr(self, "_active_look_screen", None)
         if screen is not None:
             await screen.update_data(data)
+
+    async def _on_whois_result(self, event_name: str, data: dict, **kw) -> None:
+        await self.ui.display_look(data, on_dismiss=None)
 
     def _on_look_dismissed(self) -> None:
         self._active_look_screen = None

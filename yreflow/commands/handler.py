@@ -249,6 +249,13 @@ class CommandHandler:
             "function": self.handle_look,
         }
 
+        patterns["whois"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("whois "), lambda cmd: cmd[6:]),
+            ],
+            "function": self.handle_whois,
+        }
+
         patterns["laston"] = {
             "patterns": [
                 (lambda cmd: cmd.startswith("laston "), lambda cmd: cmd[7:]),
@@ -780,6 +787,68 @@ class CommandHandler:
             display_text=f"{char_name} was last online {last_awake}"
         )
 
+    async def handle_whois(self, name_to_check, cc: ControlledChar) -> CommandResult:
+        try:
+            target_id = parse_name(self.store, name_to_check, awake=False)
+        except NameParseException as e:
+            return CommandResult(success=False, notification=str(e))
+
+        msg_id = await self.conn.send(
+            f"call.core.player.{self.conn.player}.getChar",
+            {"charId": target_id},
+        )
+        self.conn.add_message_wait(
+            msg_id,
+            lambda _result, tid=target_id: self._on_whois_result(tid),
+        )
+        return CommandResult(notification="Looking up...")
+
+    async def _on_whois_result(self, char_id: str) -> None:
+        """Called when the getChar response arrives. Publishes whois data."""
+        s = self.store
+        name = s.get_character_attribute(char_id, "name") or "?"
+        surname = s.get_character_attribute(char_id, "surname") or ""
+        full_name = f"{name} {surname}".strip()
+        species = s.get_character_attribute(char_id, "species") or ""
+        gender = s.get_character_attribute(char_id, "gender") or ""
+        status = s.get_character_attribute(char_id, "status") or ""
+        avatar = s.get_character_attribute(char_id, "avatar", default="")
+
+        # Tags (reuse same logic as _gather_character_data)
+        tags = []
+        try:
+            tags_ref = s.get_character_attribute(char_id, "tags")
+            if isinstance(tags_ref, dict) and "rid" in tags_ref:
+                tags_model = s.get(tags_ref["rid"])
+                for key, entry in tags_model.items():
+                    if not isinstance(entry, dict) or "rid" not in entry:
+                        continue
+                    try:
+                        tag_info = s.get(entry["rid"])
+                        like = "_like" in key
+                        tags.append({
+                            "key": tag_info.get("key", key),
+                            "desc": tag_info.get("desc", ""),
+                            "like": like,
+                        })
+                    except KeyError:
+                        continue
+        except (KeyError, TypeError):
+            pass
+
+        data = {
+            "type": "whois",
+            "char_id": char_id,
+            "name": full_name,
+            "species": species.capitalize() if species else "",
+            "gender": gender.capitalize() if gender else "",
+            "status": status,
+            "tags": tags,
+            "avatar": avatar,
+            "auth_token": self.conn.token or "",
+        }
+        await self.conn.event_bus.publish("whois.result", data=data)
+
     async def handle_look(self, content, cc: ControlledChar) -> CommandResult:
         if content is None:
             return self._look_room(cc)
@@ -980,17 +1049,8 @@ class CommandHandler:
         except (KeyError, TypeError):
             pass
 
-        # Image URL from RID chain
-        image_url = ""
-        try:
-            image_ref = s.get_character_attribute(char_id, "image")
-            if isinstance(image_ref, dict) and "rid" in image_ref:
-                image_model = s.get(image_ref["rid"])
-                href = image_model.get("href", "")
-                if href:
-                    image_url = href
-        except (KeyError, TypeError):
-            pass
+        # Avatar key
+        avatar = s.get_character_attribute(char_id, "avatar", default="")
 
         return {
             "type": "character",
@@ -1001,6 +1061,6 @@ class CommandHandler:
             "desc": desc,
             "about": about,
             "tags": tags,
-            "image_url": image_url,
+            "avatar": avatar,
             "auth_token": self.conn.token or "",
         }

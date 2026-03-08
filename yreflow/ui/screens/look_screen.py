@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import io
-
-import requests
 from PIL import Image as PILImage
 from textual.binding import Binding
 from textual.screen import ModalScreen
@@ -17,6 +13,7 @@ from collections.abc import Callable
 
 from ...formatter import format_message
 from ...config import formatter_settings
+from ...protocol.avatar import get_avatar
 
 
 class LookScreen(ModalScreen):
@@ -95,14 +92,14 @@ class LookScreen(ModalScreen):
     def compose(self):
         with Vertical(id="look-container"):
             yield Static(self.data.get("name", ""), id="look-title", markup=True)
-            if self.data["type"] == "character":
+            if self.data["type"] in ("character", "whois"):
                 parts = []
-                if self.data.get("species"):
-                    parts.append(self.data["species"])
                 if self.data.get("gender"):
                     parts.append(self.data["gender"])
+                if self.data.get("species"):
+                    parts.append(self.data["species"])
                 if parts:
-                    yield Static(" \u00b7 ".join(parts), id="look-subtitle")
+                    yield Static(" ".join(parts), id="look-subtitle")
             yield VerticalScroll(id="look-body")
             yield Button("Close", id="close-btn", variant="default")
 
@@ -112,6 +109,8 @@ class LookScreen(ModalScreen):
             await self._mount_room(body)
         elif self.data["type"] == "character":
             await self._mount_character(body)
+        elif self.data["type"] == "whois":
+            await self._mount_whois(body)
 
     async def _mount_room(self, body: VerticalScroll) -> None:
         areas = self.data.get("areas", [])
@@ -177,21 +176,17 @@ class LookScreen(ModalScreen):
             )
 
     async def _mount_character(self, body: VerticalScroll) -> None:
-        image_url = self.data.get("image_url", "")
+        avatar_key = self.data.get("avatar", "")
         desc = self.data.get("desc","")
-        if image_url:
+        if avatar_key:
             try:
-                if image_url != self._cached_image_url or self._cached_image is None:
-                    cookies = {}
-                    auth_token = self.data.get("auth_token", "")
-                    if auth_token:
-                        cookies["wolfery-auth-token"] = auth_token
-                    resp = await asyncio.to_thread(
-                        requests.get, image_url, timeout=10, cookies=cookies
+                if avatar_key != self._cached_image_url or self._cached_image is None:
+                    self._cached_image = await get_avatar(
+                        avatar_key,
+                        size="xl",
+                        auth_token=self.data.get("auth_token", ""),
                     )
-                    resp.raise_for_status()
-                    self._cached_image = PILImage.open(io.BytesIO(resp.content))
-                    self._cached_image_url = image_url
+                    self._cached_image_url = avatar_key
                 await body.mount(TImage(self._cached_image, id="look-avatar"))
             except Exception:
                 pass
@@ -210,36 +205,63 @@ class LookScreen(ModalScreen):
                 Static(format_message(about, on_url=self._on_url, **formatter_settings()), classes="look-text", markup=True)
             )
 
-        tags = self.data.get("tags", [])
-        if tags:
-            await body.mount(
-                Static("Tags", classes="look-section-title", markup=True)
-            )
-            likes = [t for t in tags if t["like"]]
-            dislikes = [t for t in tags if not t["like"]]
-            if likes:
-                items = ", ".join(t["key"] for t in likes)
-                await body.mount(
-                    Static(
-                        f"  [green]Likes:[/green] {items}",
-                        classes="look-tag-like",
-                        markup=True,
-                    )
-                )
-            if dislikes:
-                items = ", ".join(t["key"] for t in dislikes)
-                await body.mount(
-                    Static(
-                        f"  [red]Dislikes:[/red] {items}",
-                        classes="look-tag-dislike",
-                        markup=True,
-                    )
-                )
+        await self._mount_tags(body)
 
-        if not desc and not about and not tags:
+        if not desc and not about and not self.data.get("tags"):
             await body.mount(
                 Static("[dim]No information available.[/dim]", markup=True)
             )
+
+    async def _mount_tags(self, body: VerticalScroll) -> None:
+        tags = self.data.get("tags", [])
+        if not tags:
+            return
+        await body.mount(
+            Static("Tags", classes="look-section-title", markup=True)
+        )
+        likes = [t for t in tags if t["like"]]
+        dislikes = [t for t in tags if not t["like"]]
+        if likes:
+            items = ", ".join(t["key"] for t in likes)
+            await body.mount(
+                Static(
+                    f"  [green]Likes:[/green] {items}",
+                    classes="look-tag-like",
+                    markup=True,
+                )
+            )
+        if dislikes:
+            items = ", ".join(t["key"] for t in dislikes)
+            await body.mount(
+                Static(
+                    f"  [red]Dislikes:[/red] {items}",
+                    classes="look-tag-dislike",
+                    markup=True,
+                )
+            )
+
+    async def _mount_whois(self, body: VerticalScroll) -> None:
+        status = self.data.get("status", "")
+        if status:
+            await body.mount(
+                Static(f"[italic]{status}[/italic]", classes="look-text", markup=True)
+            )
+
+        avatar_key = self.data.get("avatar", "")
+        if avatar_key:
+            try:
+                if avatar_key != self._cached_image_url or self._cached_image is None:
+                    self._cached_image = await get_avatar(
+                        avatar_key,
+                        size="m",
+                        auth_token=self.data.get("auth_token", ""),
+                    )
+                    self._cached_image_url = avatar_key
+                await body.mount(TImage(self._cached_image, id="look-avatar"))
+            except Exception:
+                pass
+
+        await self._mount_tags(body)
 
     async def update_data(self, data: dict) -> None:
         """Re-render the body with updated character data."""
@@ -250,6 +272,8 @@ class LookScreen(ModalScreen):
             await self._mount_room(body)
         elif data["type"] == "character":
             await self._mount_character(body)
+        elif data["type"] == "whois":
+            await self._mount_whois(body)
 
     def action_close_screen(self) -> None:
         self.dismiss()
