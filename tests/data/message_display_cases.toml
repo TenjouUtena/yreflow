@@ -133,6 +133,18 @@ expected_contains = "[italic]"
 expected_contains_2 = "(Thorn Ashvale)"
 
 [[case]]
+description = "describe message"
+style = "describe"
+sender = ""
+msg = "A cat sits on the mat."
+target_name = " "
+has_pose = false
+is_ooc = false
+timestamp = "16:00"
+expected_contains = "[italic]"
+expected_not_contains = "( )"
+
+[[case]]
 description = "arrive message"
 style = "arrive"
 sender = "Pip"
