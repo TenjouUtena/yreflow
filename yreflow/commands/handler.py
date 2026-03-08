@@ -57,8 +57,11 @@ class CommandResult:
 
 class CommandHandler:
     def __init__(self, connection: WolferyConnection, store: ModelStore):
+        from .mail_handler import MailManager
+
         self.conn = connection
         self.store = store
+        self.mail_manager = MailManager(connection, store)
 
     def detect_command_type(self, command_text: str):
         """Detect command type and return (style, content, handler_func)."""
@@ -329,6 +332,14 @@ class CommandHandler:
                 (lambda cmd: cmd.strip() == "nav", lambda cmd: ""),
             ],
             "function": self.handle_nav,
+        }
+
+        patterns["mail"] = {
+            "patterns": [
+                (lambda cmd: cmd == "mail", lambda cmd: ""),
+                (lambda cmd: cmd.startswith("mail "), lambda cmd: cmd[5:]),
+            ],
+            "function": self.handle_mail,
         }
 
         for style in patterns:
@@ -846,6 +857,8 @@ class CommandHandler:
             "tags": tags,
             "avatar": avatar,
             "auth_token": self.conn.token or "",
+            "file_base_url": self.conn.realm.file_url,
+            "cookie_name": self.conn.realm.cookie_name,
         }
         await self.conn.event_bus.publish("whois.result", data=data)
 
@@ -888,6 +901,9 @@ class CommandHandler:
 
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)
+
+    async def handle_mail(self, content, cc: ControlledChar) -> CommandResult:
+        return await self.mail_manager.process_command(content, cc)
 
     async def handle_describe(self, content: str, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
@@ -1063,4 +1079,6 @@ class CommandHandler:
             "tags": tags,
             "avatar": avatar,
             "auth_token": self.conn.token or "",
+            "file_base_url": self.conn.realm.file_url,
+            "cookie_name": self.conn.realm.cookie_name,
         }

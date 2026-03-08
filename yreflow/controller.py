@@ -51,10 +51,15 @@ class Controller:
         self.event_bus.subscribe(r"^auth\.token_expired$", self._on_token_expired)
         self.event_bus.subscribe(r"^system\.text$", self._on_system_text)
         self.event_bus.subscribe(r"^protocol\.error$", self._on_protocol_error)
+        self.event_bus.subscribe(r"^mail\.result$", self._on_mail_result)
 
         # Rebuild sidebar when any character's LFRP or idle status changes
         self.store.add_watch(r"^core\.char\.[^.]+\.lfrp", self._on_char_changed)
         self.store.add_watch(r"^core\.char\.[^.]+\.idle", self._on_char_changed)
+
+        # Notify unread mail on first load after connect
+        self._mail_notified = False
+        self.store.add_watch(r"^mail\.player\.\w+\.unread", self._on_mail_unread)
 
     async def start(self) -> None:
         await self.connection.connect()
@@ -123,6 +128,7 @@ class Controller:
 
     async def _on_connection_established(self, event_name: str, **kw) -> None:
         self._reconnect_delay = 5.0
+        self._mail_notified = False
         await self.ui.update_connection_status("connected")
 
     async def _on_connection_closed(self, event_name: str, **kw) -> None:
@@ -138,7 +144,8 @@ class Controller:
 
     async def _on_connection_failed(self, event_name: str, **kw) -> None:
         await self.ui.update_connection_status("disconnected")
-        await self.ui.display_system_text("Could not connect to Wolfery!")
+        realm_name = self.connection.realm.key.capitalize()
+        await self.ui.display_system_text(f"Could not connect to {realm_name}!")
 
     async def _on_look_result(self, event_name: str, data: dict, **kw) -> None:
         self._active_look_screen = await self.ui.display_look(
@@ -177,3 +184,15 @@ class Controller:
         self.connection.token = None
         self.connection.auth_mode = "password"
         await self.ui.show_login(error="Session expired. Please log in again.")
+
+    async def _on_mail_result(self, event_name: str, text: str, **kw) -> None:
+        await self.ui.display_system_text(text)
+
+    async def _on_mail_unread(self, path: str, payload) -> None:
+        if self._mail_notified:
+            return
+        self._mail_notified = True
+        count = self.commands.mail_manager.check_unread()
+        if count > 0:
+            plural = "s" if count != 1 else ""
+            await self.ui.notify(f"You have {count} unread message{plural}.")

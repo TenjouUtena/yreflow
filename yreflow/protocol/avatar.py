@@ -11,13 +11,16 @@ log = logging.getLogger(__name__)
 
 AvatarSize = Literal["s", "m", "l", "xl", "xxl"]
 
-_BASE_URL = "https://file.wolfery.com/core/char/avatar"
+_DEFAULT_FILE_URL = "https://file.wolfery.com"
+_DEFAULT_COOKIE = "wolfery-auth-token"
 
 
 async def get_avatar(
     avatar_key: str,
     size: AvatarSize = "m",
     auth_token: str = "",
+    file_base_url: str = "",
+    cookie_name: str = "",
     timeout: float = 10.0,
 ) -> PILImage.Image:
     """Fetch a character avatar and return it as a PIL Image.
@@ -25,7 +28,9 @@ async def get_avatar(
     Args:
         avatar_key: The avatar key from core.char.<id>.avatar.
         size: Thumbnail size — one of s, m, l, xl, xxl.
-        auth_token: Optional wolfery-auth-token cookie value.
+        auth_token: Optional auth-token cookie value.
+        file_base_url: Base file server URL (e.g. https://file.wolfery.com).
+        cookie_name: Auth cookie name (e.g. wolfery-auth-token).
         timeout: Request timeout in seconds.
 
     Raises:
@@ -35,10 +40,11 @@ async def get_avatar(
     if not avatar_key:
         raise ValueError("avatar_key must not be empty")
 
-    url = f"{_BASE_URL}/{avatar_key}"
+    base = file_base_url or _DEFAULT_FILE_URL
+    url = f"{base}/core/char/avatar/{avatar_key}"
     cookies = {}
     if auth_token:
-        cookies["wolfery-auth-token"] = auth_token
+        cookies[cookie_name or _DEFAULT_COOKIE] = auth_token
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.get(url, params={"thumb": size}, cookies=cookies)

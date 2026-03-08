@@ -9,6 +9,7 @@ import pytest_asyncio
 from yreflow.protocol.events import EventBus
 from yreflow.protocol.model_store import ModelStore
 from yreflow.protocol.controlled_char import ControlledChar
+from yreflow.protocol.realm import Realm
 from yreflow.commands.handler import CommandHandler
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -22,6 +23,7 @@ class MockConnection:
         self.event_bus = event_bus
         self.player = player
         self.token = "fake-token"
+        self.realm = Realm.from_key("wolfery")
         self.sent: list[tuple[str, dict | None]] = []
         self.directed_contacts: list[tuple[list, list, str]] = []
         self.message_waits: dict = {}

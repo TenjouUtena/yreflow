@@ -191,6 +191,8 @@ class LookScreen(ModalScreen):
                         avatar_key,
                         size="xl",
                         auth_token=self.data.get("auth_token", ""),
+                        file_base_url=self.data.get("file_base_url", ""),
+                        cookie_name=self.data.get("cookie_name", ""),
                     )
                     self._cached_image_url = avatar_key
                 await body.mount(TImage(self._cached_image, id="look-avatar"))
@@ -261,6 +263,8 @@ class LookScreen(ModalScreen):
                         avatar_key,
                         size="m",
                         auth_token=self.data.get("auth_token", ""),
+                        file_base_url=self.data.get("file_base_url", ""),
+                        cookie_name=self.data.get("cookie_name", ""),
                     )
                     self._cached_image_url = avatar_key
                 await body.mount(TImage(self._cached_image, id="whois-avatar"))
