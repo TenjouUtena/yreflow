@@ -27,7 +27,7 @@ _WORD_RE = re.compile(r"[a-zA-Z'\u2019]+")
 _CMD_PREFIX_RE = re.compile(
     r"^(?:"
     r"(?:say|ooc|pose|go|teleport|home|sweep|status|release|"
-    r"focus|unfocus|summon|join|lead|follow|profile|morph|look|laston|wa|wh?|[pmlt])\s"
+    r"focus|unfocus|summon|join|lead|follow|profile|morph|look|lookup|laston|wa|wh?|[pmlt])\s"
     r"|[:\"\u201c\u201d>@]"
     r")"
 )
