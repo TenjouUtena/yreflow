@@ -50,6 +50,7 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "pyinstrument>=5.1.2",
+    "pytest>=9.0.2",
 ]
 
 [project.scripts]

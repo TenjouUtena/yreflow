@@ -340,7 +340,7 @@ class CommandHandler:
         Returns (names_list, msg, pose, ooc) or None if unparseable.
         Names may be comma-separated for multi-recipient sends.
         """
-        m = re.match(r"([\w ,]+)=(.*)", raw_msg, re.DOTALL)
+        m = re.match(r"([\w ,-]+)=(.*)", raw_msg, re.DOTALL)
         if not m:
             return None
         names = [n.strip() for n in m.group(1).split(",") if n.strip()]

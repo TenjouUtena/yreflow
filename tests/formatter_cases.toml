@@ -1,0 +1,249 @@
+# Formatter test cases
+# Each [[case]] defines an input string and expected output.
+# Optional fields:
+#   description       - human-readable label for the test
+#   superscript_style - "unicode" (default) or "highlight"
+#   superscript_color - named color (default "gold")
+#   subscript_style   - "unicode" (default) or "highlight"
+#   subscript_color   - named color (default "skyblue")
+
+# ── Plain text (no formatting) ────────────────────────────────────
+
+[[case]]
+description = "plain text passes through unchanged"
+input = "hello world"
+expected = "hello world"
+
+[[case]]
+description = "empty string"
+input = ""
+expected = ""
+
+# ── Bold ──────────────────────────────────────────────────────────
+
+[[case]]
+description = "bold wrapping"
+input = "**bold**"
+expected = "[bold]bold[/bold]"
+
+[[case]]
+description = "bold mid-sentence"
+input = "some **bold** text"
+expected = "some [bold]bold[/bold] text"
+
+[[case]]
+description = "multiple bold spans"
+input = "**one** and **two**"
+expected = "[bold]one[/bold] and [bold]two[/bold]"
+
+# ── Italic ────────────────────────────────────────────────────────
+
+[[case]]
+description = "italic wrapping"
+input = "_italic_"
+expected = "[italic]italic[/italic]"
+
+[[case]]
+description = "italic mid-sentence"
+input = "some _italic_ words"
+expected = "some [italic]italic[/italic] words"
+
+# ── Strikethrough ─────────────────────────────────────────────────
+
+[[case]]
+description = "strikethrough wrapping"
+input = "~~strike~~"
+expected = "[strike]strike[/strike]"
+
+[[case]]
+description = "strikethrough mid-sentence"
+input = "no ~~deleted~~ yes"
+expected = "no [strike]deleted[/strike] yes"
+
+# ── Superscript (unicode mode, default) ──────────────────────────
+
+[[case]]
+description = "superscript unicode"
+input = "++super++"
+expected = "ˢᵘᵖᵉʳ"
+
+[[case]]
+description = "superscript unicode mid-sentence"
+input = "x++2++ is common"
+expected = "x² is common"
+
+[[case]]
+description = "superscript unicode letters"
+input = "++hello++"
+expected = "ʰᵉˡˡᵒ"
+
+[[case]]
+description = "superscript unicode abc123"
+input = "++abc123++"
+expected = "ᵃᵇᶜ¹²³"
+
+# ── Superscript (highlight mode) ─────────────────────────────────
+
+[[case]]
+description = "superscript highlight gold"
+input = "++highlight++"
+expected = "[rgb(255,215,0)]highlight[/rgb(255,215,0)]"
+superscript_style = "highlight"
+superscript_color = "gold"
+
+[[case]]
+description = "superscript highlight red"
+input = "++red text++"
+expected = "[rgb(255,0,0)]red text[/rgb(255,0,0)]"
+superscript_style = "highlight"
+superscript_color = "red"
+
+# ── Subscript (unicode mode, default) ────────────────────────────
+
+[[case]]
+description = "subscript unicode"
+input = "--sub--"
+expected = "ₛᵤb"
+
+[[case]]
+description = "subscript unicode hello"
+input = "--hello--"
+expected = "ₕₑₗₗₒ"
+
+[[case]]
+description = "subscript unicode test"
+input = "--test--"
+expected = "ₜₑₛₜ"
+
+# ── Subscript (highlight mode) ───────────────────────────────────
+
+[[case]]
+description = "subscript highlight skyblue"
+input = "--highlight--"
+expected = "[rgb(135,206,235)]highlight[/rgb(135,206,235)]"
+subscript_style = "highlight"
+subscript_color = "skyblue"
+
+[[case]]
+description = "subscript highlight green"
+input = "--green text--"
+expected = "[rgb(0,128,0)]green text[/rgb(0,128,0)]"
+subscript_style = "highlight"
+subscript_color = "green"
+
+# ── OOC (out-of-character) ───────────────────────────────────────
+
+[[case]]
+description = "OOC inline"
+input = "((ooc text))"
+expected = "[dim](ooc text)[/dim]"
+
+[[case]]
+description = "OOC mid-sentence"
+input = "hello ((aside)) world"
+expected = "hello [dim](aside)[/dim] world"
+
+# ── Code spans ───────────────────────────────────────────────────
+
+[[case]]
+description = "inline code"
+input = "`code here`"
+expected = "[dark_goldenrod]code here[/dark_goldenrod]"
+
+[[case]]
+description = "code escapes brackets"
+input = "`[bold]not bold[/bold]`"
+expected = "[dark_goldenrod]\\[bold]not bold\\[/bold][/dark_goldenrod]"
+
+# ── Escape blocks ────────────────────────────────────────────────
+
+[[case]]
+description = "esc block prevents formatting"
+input = "<esc>**not bold**</esc>"
+expected = "**not bold**"
+
+[[case]]
+description = "esc block escapes brackets"
+input = "<esc>[tag]</esc>"
+expected = "\\[tag]"
+
+# ── Rich bracket escaping ────────────────────────────────────────
+
+[[case]]
+description = "bare brackets are escaped"
+input = "array[0]"
+expected = "array\\[0]"
+
+# ── Markdown links ───────────────────────────────────────────────
+
+[[case]]
+description = "markdown link renders as underlined cyan"
+input = "[click me](https://example.com)"
+expected = "[underline cyan]click me[/underline cyan]"
+
+[[case]]
+description = "bare URL renders as underlined cyan"
+input = "visit https://example.com today"
+expected = "visit [underline cyan]https://example.com[/underline cyan] today"
+
+# ── Nobr tags stripped ───────────────────────────────────────────
+
+[[case]]
+description = "nobr tags are removed"
+input = "<nobr>no break</nobr>"
+expected = "no break"
+
+# ── Headers ──────────────────────────────────────────────────────
+
+[[case]]
+description = "h1 header"
+input = "# Title"
+expected = "[bold underline]Title[/bold underline]"
+
+[[case]]
+description = "h2 header"
+input = "## Subtitle"
+expected = "[bold]Subtitle[/bold]"
+
+[[case]]
+description = "h3 header"
+input = "### Minor"
+expected = "[bold dim]Minor[/bold dim]"
+
+# ── Sections ─────────────────────────────────────────────────────
+
+[[case]]
+description = "open section heading"
+input = "[[Section Name]]"
+expected = "[bold cyan]▸ Section Name[/bold cyan]"
+
+# ── Combined formatting ─────────────────────────────────────────
+
+[[case]]
+description = "bold and italic together"
+input = "**bold** and _italic_"
+expected = "[bold]bold[/bold] and [italic]italic[/italic]"
+
+[[case]]
+description = "all inline styles"
+input = "**b** _i_ ~~s~~ ((o))"
+expected = "[bold]b[/bold] [italic]i[/italic] [strike]s[/strike] [dim](o)[/dim]"
+
+[[case]]
+description = "formatting with code"
+input = "see `var` for **details**"
+expected = "see [dark_goldenrod]var[/dark_goldenrod] for [bold]details[/bold]"
+
+# ── Fenced code blocks ──────────────────────────────────────────
+
+[[case]]
+description = "fenced code block"
+input = "```\nhello\n```"
+expected = "[on grey15 dark_goldenrod]hello\n[/on grey15 dark_goldenrod]"
+
+# -- Edge Cases --------------------------------------------------
+
+[[case]]
+description = "Testing some code"
+input = "++--++--"
+expected = "----"
