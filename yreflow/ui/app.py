@@ -25,48 +25,13 @@ from .screens.url_screen import UrlScreen
 from .screens.settings_screen import SettingsScreen
 from ..config import load_config, save_preference, formatter_settings
 from ..formatter import format_message
-
-
-_ELIDE_SPACE_CHARS = frozenset("',.!?:;-\u2019")
+from .format_line import (
+    format_line as _format_line_fn,
+    format_timestamp as _format_timestamp_fn,
+    _parse_css_color,
+)
 
 from ..constants import NAMED_COLORS
-
-
-def _parse_css_color(color_str: str) -> tuple[int, int, int] | None:
-    """Parse a CSS color string (hex, rgb(), named) into (r, g, b).
-
-    Returns None if unparseable.
-    """
-    s = color_str.strip().lower()
-
-    # #rrggbb or #rgb
-    m = re.match(r"^#([0-9a-f]{6})$", s)
-    if m:
-        h = m.group(1)
-        return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    m = re.match(r"^#([0-9a-f]{3})$", s)
-    if m:
-        h = m.group(1)
-        return int(h[0] * 2, 16), int(h[1] * 2, 16), int(h[2] * 2, 16)
-
-    # rgb(r, g, b) or rgba(r, g, b, a)
-    m = re.match(r"^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)", s)
-    if m:
-        return int(m.group(1)), int(m.group(2)), int(m.group(3))
-
-    # Named CSS colors
-    if s in NAMED_COLORS:
-        return NAMED_COLORS[s]
-
-    return None
-
-
-def _luminance(r: int, g: int, b: int) -> float:
-    """Relative luminance (0-1) per WCAG formula."""
-    def lin(c):
-        c = c / 255.0
-        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
 
 
 def _color_to_hex(color_str: str) -> str | None:
@@ -635,17 +600,7 @@ class WolferyApp(App):
         char_bar.update_unread(character, count, urgent)
 
     def _format_timestamp(self, timestamp: str, focus_color: str | None) -> str:
-        """Format the timestamp, applying focus background color if set."""
-        if not timestamp:
-            return ""
-        if focus_color:
-            rgb = _parse_css_color(focus_color)
-            if rgb and _luminance(*rgb) > 0.3:
-                fg = "#333333"
-            else:
-                fg = "#cccccc"
-            return f"[{fg} on {focus_color}]{timestamp}[/] "
-        return f"[dim]{timestamp}[/dim] "
+        return _format_timestamp_fn(timestamp, focus_color)
 
     def _format_line(
         self,
@@ -658,61 +613,9 @@ class WolferyApp(App):
         timestamp: str,
         focus_color: str | None = None,
     ) -> str:
-        ts = self._format_timestamp(timestamp, focus_color)
-        sep = "" if msg and msg[0] in _ELIDE_SPACE_CHARS else " "
-
-        if is_ooc and style not in ("ooc",):
-            msg = f"[dim]{msg}[/dim]"
-
-        if style == "say":
-            return f'{ts}[bold cyan]{sender}[/bold cyan] says, "{msg}"'
-
-        if style == "pose":
-            return f"{ts}[bold cyan]{sender}[/bold cyan]{sep}{msg}"
-
-        if style == "ooc":
-            if has_pose:
-                return f"{ts}[dim]\\[OOC][/dim] [bold cyan]{sender}[/bold cyan]{sep}[dim]{msg}[/dim]"
-            return f'{ts}[dim]\\[OOC][/dim] [bold cyan]{sender}[/bold cyan] [dim]says, "{msg}"[/dim]'
-
-        if style == "whisper":
-            label = f"[magenta]whisper {target_name}[/magenta]"
-            if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
-            return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) whispers, "{msg}"'
-
-        if style == "message":
-            label = f"[yellow]msg {target_name}[/yellow]"
-            if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
-            return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) messages, "{msg}"'
-
-        if style == "address":
-            label = f"[green]@{target_name}[/green]"
-            if has_pose:
-                return f"{ts}[bold cyan]{sender}[/bold cyan] ({label}){sep}{msg}"
-            return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) says, "{msg}"'
-
-        if style == "describe":
-            return f"{ts}[italic]{msg}[/italic] [dim]({sender})[/dim]"
-
-        if style in ("arrive", "leave", "travel", "sleep", "action", "wakeup"):
-            return f"{ts}[dim][bold]{sender}[/bold] {msg}[/dim]"
-
-        if style == "roll":
-            return f"{ts}[bold cyan]{sender}[/bold cyan] {msg}"
-
-        if style == "leadRequest":
-            return f"{ts}[bold yellow]>> [bold cyan]{sender}[/bold cyan] wants to lead {target_name}.[/bold yellow]"
-
-        if style == "followRequest":
-            return f"{ts}[bold yellow]>> [bold cyan]{sender}[/bold cyan] wants to follow {target_name}.[/bold yellow]"
-
-        if style == "controlRequest":
-            return f"{ts}[bold yellow]>> [bold cyan]{sender}[/bold cyan] requests control of {target_name}.[/bold yellow]"
-
-        # Fallback
-        return f"{ts}[bold cyan]{sender}[/bold cyan] {msg}"
+        return _format_line_fn(
+            style, sender, msg, target_name, has_pose, is_ooc, timestamp, focus_color
+        )
 
     async def display_system_text(self, text: str) -> None:
         if self.active_character and self.active_character in self.character_views:

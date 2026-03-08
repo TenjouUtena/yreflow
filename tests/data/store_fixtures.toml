@@ -1,0 +1,65 @@
+# Fully fictional test data for store fixtures.
+# Structure mirrors Wolfery's Resgate model tree.
+
+[characters.thorn]
+id = "abc123def456"
+name = "Thorn"
+surname = "Ashvale"
+awake = true
+gender = "Male"
+species = "Wolf"
+status = ""
+desc = "A tall wolf with silver fur."
+
+[characters.pip]
+id = "ghi789jkl012"
+name = "Pip"
+surname = "Meadowbrook"
+awake = true
+gender = "Female"
+species = "Fox"
+status = "Looking for RP"
+desc = "A cheerful fox with bright eyes."
+
+[characters.moss]
+id = "mno345pqr678"
+name = "Moss"
+surname = "Ferndale"
+awake = true
+gender = "Male"
+species = "Deer"
+status = ""
+desc = "A quiet deer with branching antlers."
+
+[characters.wren]
+id = "stu901vwx234"
+name = "Wren"
+surname = "Ashvale"
+awake = false
+gender = "Female"
+species = "Wolf"
+status = ""
+desc = "A sleeping wolf."
+
+[room]
+id = "room001abc"
+name = "The Cozy Tavern"
+desc = "A warm tavern with a crackling fireplace."
+area_id = "area001xyz"
+area_name = "Greenwood Village"
+
+[[room.exits]]
+name = "Market Square"
+keys = ["market", "north"]
+target_room = "room002def"
+
+[[room.exits]]
+name = "Back Alley"
+keys = ["alley", "south"]
+target_room = "room003ghi"
+
+[puppet]
+char_id = "pup567tuv"
+puppeteer_id = "abc123def456"
+name = "Spark"
+surname = ""

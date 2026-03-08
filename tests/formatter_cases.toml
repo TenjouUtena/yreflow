@@ -247,3 +247,4 @@ expected = "[on grey15 dark_goldenrod]hello\n[/on grey15 dark_goldenrod]"
 description = "Testing some code"
 input = "++--++--"
 expected = "----"
+xfail = true

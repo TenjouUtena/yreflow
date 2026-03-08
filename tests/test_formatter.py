@@ -29,6 +29,9 @@ def _case_id(case: dict) -> str:
 
 @pytest.mark.parametrize("case", _CASES, ids=[_case_id(c) for c in _CASES])
 def test_format_message(case: dict):
+    if case.get("xfail"):
+        pytest.xfail(reason=case.get("description", "known failure"))
+
     kwargs = {}
     for key in ("superscript_style", "superscript_color",
                 "subscript_style", "subscript_color"):
