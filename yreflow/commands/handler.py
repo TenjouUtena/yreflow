@@ -308,6 +308,15 @@ class CommandHandler:
             "function": self.handle_settings,
         }
 
+        patterns["describe"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("describe "), lambda cmd: cmd[9:]),
+                (lambda cmd: cmd.startswith("desc "), lambda cmd: cmd[5:]),
+                (lambda cmd: cmd.startswith("spoof "), lambda cmd: cmd[6:]),
+            ],
+            "function": self.handle_describe,
+        }
+
         patterns["nav"] = {
             "patterns": [
                 (lambda cmd: cmd.strip() == "nav", lambda cmd: ""),
@@ -810,6 +819,12 @@ class CommandHandler:
 
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)
+
+    async def handle_describe(self, content: str, cc: ControlledChar) -> CommandResult:
+        await self.conn.send(
+            f"call.{cc.ctrl_path}.describe", {"msg": content}
+        )
+        return CommandResult()
 
     async def _lookup_result(self, payload) -> None:
         output = f"{'Char:':<30}{'Gender':<10}{'Species:':<20}{'Last On:':<20}\n"
