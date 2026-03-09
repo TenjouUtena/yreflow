@@ -117,6 +117,8 @@ class LookScreen(ModalScreen):
             await self._mount_character(body)
         elif self.data["type"] == "whois":
             await self._mount_whois(body)
+        elif self.data["type"] == "rules":
+            await self._mount_rules(body)
 
     async def _mount_room(self, body: VerticalScroll) -> None:
         areas = self.data.get("areas", [])
@@ -248,6 +250,17 @@ class LookScreen(ModalScreen):
                 )
             )
 
+    async def _mount_rules(self, body: VerticalScroll) -> None:
+        rules = self.data.get("rules", "")
+        if rules:
+            await body.mount(
+                Static(format_message(rules, on_url=self._on_url, **formatter_settings()), classes="look-text", markup=True)
+            )
+        else:
+            await body.mount(
+                Static("[dim]No rules available.[/dim]", markup=True)
+            )
+
     async def _mount_whois(self, body: VerticalScroll) -> None:
         status = self.data.get("status", "")
         if status:
@@ -284,6 +297,8 @@ class LookScreen(ModalScreen):
             await self._mount_character(body)
         elif data["type"] == "whois":
             await self._mount_whois(body)
+        elif data["type"] == "rules":
+            await self._mount_rules(body)
 
     def action_close_screen(self) -> None:
         self.dismiss()

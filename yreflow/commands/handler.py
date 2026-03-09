@@ -274,6 +274,14 @@ class CommandHandler:
             "function": self.handle_wa,
         }
 
+        patterns["rules"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "rules", lambda cmd: None),
+                (lambda cmd: cmd.strip() == "area rules", lambda cmd: None),
+            ],
+            "function": self.handle_rules,
+        }
+
         patterns["lookup"] = {
             "patterns": [
                 (lambda cmd: cmd.startswith("lookup "), lambda cmd: cmd[7:])
@@ -791,6 +799,49 @@ class CommandHandler:
                 continue
 
         return result
+
+    async def handle_rules(self, content, cc: ControlledChar) -> CommandResult:
+        """Show area rules by walking up the area hierarchy."""
+        room_pointer = self.store.get_room_rid(cc.char_path)
+        if not room_pointer:
+            return CommandResult(
+                success=False, notification="Could not determine current room."
+            )
+        try:
+            room = self.store.get(room_pointer)
+            area_ref = room.get("area", {})
+            if not (isinstance(area_ref, dict) and "rid" in area_ref):
+                details = room.get("details", {})
+                if isinstance(details, dict):
+                    area_ref = details.get("area", {})
+            area_path = area_ref["rid"]
+        except (KeyError, TypeError):
+            return CommandResult(
+                success=False, notification="Could not determine current area."
+            )
+
+        # Walk up the area hierarchy looking for rules
+        while area_path:
+            try:
+                area = self.store.get(area_path)
+                details = area.get("details", area)
+                rules = details.get("rules", "")
+                if rules:
+                    area_name = details.get("name", "Area")
+                    return CommandResult(look_data={
+                        "type": "rules",
+                        "name": f"{area_name} Rules",
+                        "rules": rules,
+                    })
+                parent = area.get("parent") or details.get("parent")
+                if isinstance(parent, dict) and "rid" in parent:
+                    area_path = parent["rid"]
+                else:
+                    area_path = None
+            except KeyError:
+                break
+
+        return CommandResult(notification="No area rules found.")
 
     async def handle_laston(self, name_to_check, cc: ControlledChar) -> CommandResult:
         try:
