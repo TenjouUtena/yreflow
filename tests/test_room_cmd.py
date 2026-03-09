@@ -213,6 +213,36 @@ class TestProcessCommandRoomCmd:
             "values": {"what": {"value": ""}},
         }
 
+    async def test_do_alias_simple(self, handler, cc_thorn):
+        """'do pull lever' should work like 'pull lever'."""
+        result = await handler.process_command("do pull lever", cc_thorn)
+        assert result.success
+        method, params = handler.conn.sent[-1]
+        assert method == "call.core.char.abc123def456.ctrl.execRoomCmd"
+        assert params == {"cmdId": "cmd001simple", "values": None}
+
+    async def test_do_alias_with_fields(self, handler, cc_thorn):
+        """'do give Pip = 5' should work like 'give Pip = 5'."""
+        result = await handler.process_command("do give Pip = 5", cc_thorn)
+        assert result.success
+        method, params = handler.conn.sent[-1]
+        assert method == "call.core.char.abc123def456.ctrl.execRoomCmd"
+        assert params == {
+            "cmdId": "cmd002fields",
+            "values": {"Character": {"charId": "ghi789jkl012"}, "Amount": {"value": 5}},
+        }
+
+    async def test_do_alias_case_insensitive(self, handler, cc_thorn):
+        """'Do pull lever' and 'DO pull lever' should both work."""
+        result = await handler.process_command("Do pull lever", cc_thorn)
+        assert result.success
+        assert handler.conn.sent[-1][1] == {"cmdId": "cmd001simple", "values": None}
+
+    async def test_do_alone_not_matched(self, handler, cc_thorn):
+        """Bare 'do' should not crash or match."""
+        result = await handler.process_command("do", cc_thorn)
+        assert not result.success
+
     async def test_puppet_room_cmd(self, handler, cc_puppet, populated_store):
         """Puppet should use puppet ctrl_path for room commands."""
         # Set up puppet's inRoom pointer

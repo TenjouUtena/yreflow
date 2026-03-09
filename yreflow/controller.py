@@ -15,6 +15,7 @@ from .protocol.controlled_char import ControlledChar
 from .protocol.http_auth import obtain_token
 from .commands.handler import CommandHandler, CommandResult
 from .commands.console_handler import ConsoleHandler
+from .plugins import PluginManager
 from .url_catcher import UrlCatcher
 from .config import load_config, save_token, clear_token
 
@@ -31,6 +32,7 @@ class Controller:
         self.commands = CommandHandler(self.connection, self.store)
         self.console_commands = ConsoleHandler(self.connection, self.store)
         self.url_catcher = UrlCatcher(self.event_bus)
+        self.plugin_manager = PluginManager(self.event_bus, self.store, self.connection)
         self._reconnect_delay = 5.0
 
         # Subscribe to protocol events
@@ -52,6 +54,7 @@ class Controller:
         self.event_bus.subscribe(r"^system\.text$", self._on_system_text)
         self.event_bus.subscribe(r"^protocol\.error$", self._on_protocol_error)
         self.event_bus.subscribe(r"^mail\.result$", self._on_mail_result)
+        self.event_bus.subscribe(r"^autocomplete\.results$", self._on_autocomplete_results)
 
         # Rebuild sidebar when any character's LFRP or idle status changes
         self.store.add_watch(r"^core\.char\.[^.]+\.lfrp", self._on_char_changed)
@@ -62,6 +65,7 @@ class Controller:
         self.store.add_watch(r"^mail\.player\.\w+\.unread", self._on_mail_unread)
 
     async def start(self) -> None:
+        await self.plugin_manager.discover_builtin()
         await self.connection.connect()
 
     async def start_with_credentials(self, username: str, password: str) -> None:
@@ -70,6 +74,7 @@ class Controller:
         save_token(token)
         self.connection.token = token
         self.connection.auth_mode = "token"
+        await self.plugin_manager.discover_builtin()
         await self.connection.connect()
 
     async def handle_command(self, command: str, ctrl_id: str) -> CommandResult:
@@ -196,3 +201,8 @@ class Controller:
         if count > 0:
             plural = "s" if count != 1 else ""
             await self.ui.notify(f"You have {count} unread message{plural}.")
+
+    async def _on_autocomplete_results(
+        self, event_name: str, results: list[str], prefix_len: int, **kw
+    ) -> None:
+        await self.ui.apply_completions(results, prefix_len)

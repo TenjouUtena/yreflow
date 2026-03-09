@@ -124,6 +124,16 @@ class WolferyApp(App):
 
     async def action_autocomplete(self):
         input_bar = self.query_one("#input-bar", InputBar)
+        # Let plugins try to handle autocomplete first.
+        if self.controller and self.active_character:
+            handled = await self.controller.event_bus.publish_interceptable(
+                "autocomplete.try",
+                input=input_bar.value,
+                cursor=input_bar.cursor_position,
+                ctrl_id=self.active_character,
+            )
+            if handled:
+                return
         await input_bar.autocomplete()
 
 
@@ -788,5 +798,12 @@ class WolferyApp(App):
         try:
             indicator = self.query_one("#connection-indicator", ConnectionIndicator)
             indicator.blink()
+        except Exception:
+            pass
+
+    async def apply_completions(self, results: list[str], prefix_len: int) -> None:
+        try:
+            input_bar = self.query_one("#input-bar", InputBar)
+            input_bar.apply_completions(results, prefix_len)
         except Exception:
             pass

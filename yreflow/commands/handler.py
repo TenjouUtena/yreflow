@@ -381,9 +381,13 @@ class CommandHandler:
         if func_call:
             return await func_call(content, cc)
 
-        # Fallback: try room commands
+        # Fallback: try room commands ("do <cmd>" is an explicit alias)
+        room_input = command
+        lower = command.lower()
+        if lower.startswith("do ") and len(command) > 3:
+            room_input = command[3:]
         try:
-            result = match_room_commands(self.store, cc.char_path, command)
+            result = match_room_commands(self.store, cc.char_path, room_input)
             if result:
                 cmd_id, values, _ = result
                 return await self.handle_room_cmd(cmd_id, values, cc)
