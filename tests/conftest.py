@@ -133,7 +133,7 @@ async def populated_store(store):
     )
 
     # Load room commands
-    cmd_values = []
+    cmd_values = {}
     for _key, cmd in fixtures.get("room_cmds", {}).items():
         cmd_id = cmd["id"]
         cmd_rid = f"core.roomcmd.{cmd_id}"
@@ -161,8 +161,8 @@ async def populated_store(store):
             "id": cmd_id,
             "priority": cmd.get("priority", 0),
         })
-        cmd_values.append({"rid": cmd_rid})
-    await store.set(f"core.room.{room_id}.cmds", {"_value": cmd_values})
+        cmd_values[cmd_id] = {"rid": cmd_rid}
+    await store.set(f"core.room.{room_id}.cmds", cmd_values)
 
     return store
 

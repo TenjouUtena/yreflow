@@ -36,6 +36,26 @@ class TestParseRoomCmdPattern:
         assert m
         assert m.group("Character") == "Thorn Ashvale"
 
+    def test_trailing_placeholder_optional(self):
+        pat = parse_room_cmd_pattern("examine <what>")
+        # With argument
+        m = pat.match("examine table")
+        assert m
+        assert m.group("what") == "table"
+        # Without argument — trailing placeholder is optional
+        m = pat.match("examine")
+        assert m
+        assert m.group("what") is None
+
+    def test_trailing_placeholder_case_insensitive(self):
+        pat = parse_room_cmd_pattern("smell <what>")
+        m = pat.match("Smell")
+        assert m
+        assert m.group("what") is None
+        m = pat.match("SMELL roses")
+        assert m
+        assert m.group("what") == "roses"
+
 
 class TestResolveFieldValue:
     def test_char_type(self, populated_store):
@@ -50,7 +70,7 @@ class TestResolveFieldValue:
 
     def test_integer_type(self, populated_store):
         field_def = {"type": "integer", "opts": {"min": 1}}
-        assert resolve_field_value(populated_store, "Amount", field_def, "5") == 5
+        assert resolve_field_value(populated_store, "Amount", field_def, "5") == {"value": 5}
 
     def test_integer_type_below_min(self, populated_store):
         field_def = {"type": "integer", "opts": {"min": 1}}
@@ -64,7 +84,12 @@ class TestResolveFieldValue:
 
     def test_unknown_type(self, populated_store):
         field_def = {"type": "text"}
-        assert resolve_field_value(populated_store, "Note", field_def, " hello ") == "hello"
+        assert resolve_field_value(populated_store, "Note", field_def, " hello ") == {"value": "hello"}
+
+    def test_text_type_none(self, populated_store):
+        """None raw value (from optional trailing group) → empty string."""
+        field_def = {"type": "text"}
+        assert resolve_field_value(populated_store, "what", field_def, None) == {"value": ""}
 
 
 @pytest.mark.asyncio
@@ -86,7 +111,7 @@ class TestMatchRoomCommands:
         assert result is not None
         cmd_id, values, cmd_data = result
         assert cmd_id == "cmd002fields"
-        assert values == {"Character": {"charId": "ghi789jkl012"}, "Amount": 5}
+        assert values == {"Character": {"charId": "ghi789jkl012"}, "Amount": {"value": 5}}
 
     async def test_no_match(self, populated_store):
         result = match_room_commands(
@@ -121,6 +146,25 @@ class TestMatchRoomCommands:
                 populated_store, "core.char.abc123def456", "give Pip = abc"
             )
 
+    async def test_text_field_with_value(self, populated_store):
+        result = match_room_commands(
+            populated_store, "core.char.abc123def456", "examine table"
+        )
+        assert result is not None
+        cmd_id, values, _ = result
+        assert cmd_id == "cmd003examine"
+        assert values == {"what": {"value": "table"}}
+
+    async def test_text_field_blank(self, populated_store):
+        """Bare command with no argument sends empty string for text field."""
+        result = match_room_commands(
+            populated_store, "core.char.abc123def456", "examine"
+        )
+        assert result is not None
+        cmd_id, values, _ = result
+        assert cmd_id == "cmd003examine"
+        assert values == {"what": {"value": ""}}
+
 
 @pytest.mark.asyncio
 class TestProcessCommandRoomCmd:
@@ -140,7 +184,7 @@ class TestProcessCommandRoomCmd:
         assert method == "call.core.char.abc123def456.ctrl.execRoomCmd"
         assert params == {
             "cmdId": "cmd002fields",
-            "values": {"Character": {"charId": "ghi789jkl012"}, "Amount": 5},
+            "values": {"Character": {"charId": "ghi789jkl012"}, "Amount": {"value": 5}},
         }
 
     async def test_builtin_not_shadowed(self, handler, cc_thorn):
@@ -158,6 +202,16 @@ class TestProcessCommandRoomCmd:
     async def test_bad_field_returns_error(self, handler, cc_thorn):
         result = await handler.process_command("give Nobody = 5", cc_thorn)
         assert not result.success
+
+    async def test_text_field_blank_via_process_command(self, handler, cc_thorn):
+        result = await handler.process_command("examine", cc_thorn)
+        assert result.success
+        method, params = handler.conn.sent[-1]
+        assert method == "call.core.char.abc123def456.ctrl.execRoomCmd"
+        assert params == {
+            "cmdId": "cmd003examine",
+            "values": {"what": {"value": ""}},
+        }
 
     async def test_puppet_room_cmd(self, handler, cc_puppet, populated_store):
         """Puppet should use puppet ctrl_path for room commands."""

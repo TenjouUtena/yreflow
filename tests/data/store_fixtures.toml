@@ -103,3 +103,13 @@ type = "char"
 desc = "The character to give coins to."
 in_room = true
 state = "awake"
+
+[room_cmds.text_field]
+id = "cmd003examine"
+pattern = "examine <what>"
+desc = "Examine something or someone."
+priority = 110
+
+[room_cmds.text_field.fields.what]
+type = "text"
+desc = "What to look at."

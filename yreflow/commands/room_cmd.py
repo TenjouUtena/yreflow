@@ -20,24 +20,49 @@ def parse_room_cmd_pattern(pattern: str) -> re.Pattern:
     """Convert a room command pattern into a compiled regex.
 
     Literal text is escaped; ``<FieldName>`` placeholders become named
-    capture groups.  Example::
+    capture groups.  A trailing placeholder (and its preceding whitespace)
+    is made optional so that e.g. ``examine <what>`` matches bare ``examine``.
 
-        "give <Character> = <Amount>"
-        → ^give (?P<Character>.+?) = (?P<Amount>.+?)$
+    Examples::
+
+        "pull lever"                    → ^pull\\ lever$
+        "examine <what>"                → ^examine(?: (?P<what>.+?))?$
+        "give <Character> = <Amount>"   → ^give (?P<Character>.+?) =(?: (?P<Amount>.+?))?$
     """
     parts = re.split(r"(<\w+>)", pattern)
-    regex = ""
+    # Build (regex_fragment, is_group) pairs, escaping literals up front
+    # but keeping original text for literals so we can split whitespace later.
+    regex_parts: list[str] = []
+    original_parts: list[str] = []  # parallel list of original text (for literals)
     for part in parts:
         if part.startswith("<") and part.endswith(">"):
             name = part[1:-1]
-            regex += f"(?P<{name}>.+?)"
-        else:
-            regex += re.escape(part)
-    return re.compile(f"^{regex}$", re.IGNORECASE)
+            regex_parts.append(f"(?P<{name}>.+?)")
+            original_parts.append(part)
+        elif part:
+            regex_parts.append(re.escape(part))
+            original_parts.append(part)
+
+    # If the last element is a capture group, make it (and preceding
+    # whitespace separator) optional so bare commands still match.
+    if len(regex_parts) >= 2 and regex_parts[-1].startswith("(?P<"):
+        group = regex_parts.pop()
+        original_parts.pop()
+        # Work with the ORIGINAL text of the preceding literal to split
+        # trailing whitespace correctly, then re-escape each piece.
+        regex_parts.pop()
+        orig_sep = original_parts.pop()
+        stripped = orig_sep.rstrip()
+        trailing_ws = orig_sep[len(stripped):]
+        if stripped:
+            regex_parts.append(re.escape(stripped))
+        regex_parts.append(f"(?:{re.escape(trailing_ws)}{group})?")
+
+    return re.compile(f"^{''.join(regex_parts)}$", re.IGNORECASE)
 
 
 def resolve_field_value(
-    store: ModelStore, field_name: str, field_def: dict, raw_value: str
+    store: ModelStore, field_name: str, field_def: dict, raw_value: str | None
 ) -> dict | int | str:
     """Resolve a raw captured string into the typed value for the API.
 
@@ -45,7 +70,7 @@ def resolve_field_value(
     ``ValueError`` for invalid integers.
     """
     field_type = field_def.get("type", "")
-    raw = raw_value.strip()
+    raw = (raw_value or "").strip()
 
     if field_type == "char":
         char_id = parse_name(store, raw)
@@ -59,9 +84,9 @@ def resolve_field_value(
             raise ValueError(
                 f"{field_name} must be at least {minimum} (got {value})"
             )
-        return value
+        return {"value": value}
 
-    return raw
+    return {"value": raw}
 
 
 def match_room_commands(

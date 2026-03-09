@@ -133,14 +133,19 @@ class ModelStore:
             return []
 
     def get_room_cmds(self, room_pointer: str) -> list:
-        """Get room command entries for a room, following RID references if needed."""
+        """Get room command entries for a room.
+
+        The cmds field is a dict of {cmdId: {rid: ...}} pairs, not a collection.
+        Returns a list of {rid: ...} dicts for compatibility with the rest of the API.
+        """
         try:
             cmds_node = self.get(room_pointer + ".cmds")
             if cmds_node and "rid" in cmds_node:
-                cmds_path = cmds_node["rid"]
-            else:
-                cmds_path = room_pointer + ".cmds"
-            return self.get(cmds_path + "._value")
+                cmds_node = self.get(cmds_node["rid"])
+            return [
+                v for v in cmds_node.values()
+                if isinstance(v, dict) and "rid" in v
+            ]
         except KeyError:
             return []
 
