@@ -165,6 +165,16 @@ description = "code escapes brackets"
 input = "`[bold]not bold[/bold]`"
 expected = "[dark_goldenrod]\\[bold]not bold\\[/bold][/dark_goldenrod]"
 
+[[case]]
+description = "code span followed by punctuation"
+input = "`code`."
+expected = "[dark_goldenrod]code[/dark_goldenrod]."
+
+[[case]]
+description = "code span followed by space and text"
+input = "`code` more text"
+expected = "[dark_goldenrod]code[/dark_goldenrod] more text"
+
 # ── Escape blocks ────────────────────────────────────────────────
 
 [[case]]

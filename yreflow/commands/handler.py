@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .name_resolver import parse_name, NameParseException
+from .room_cmd import match_room_commands
 
 
 def _relative_time(ms_timestamp: float) -> str:
@@ -379,9 +380,28 @@ class CommandHandler:
         command_type, content, func_call = self.detect_command_type(command)
         if func_call:
             return await func_call(content, cc)
+
+        # Fallback: try room commands
+        try:
+            result = match_room_commands(self.store, cc.char_path, command)
+            if result:
+                cmd_id, values, _ = result
+                return await self.handle_room_cmd(cmd_id, values, cc)
+        except (NameParseException, ValueError) as e:
+            return CommandResult(success=False, notification=str(e))
+
         return CommandResult(success=False, notification=f"Unknown command: {command}")
 
     # --- Handlers ---
+
+    async def handle_room_cmd(
+        self, cmd_id: str, values: dict | None, cc: ControlledChar
+    ) -> CommandResult:
+        await self.conn.send(
+            f"call.{cc.ctrl_path}.execRoomCmd",
+            {"cmdId": cmd_id, "values": values or None},
+        )
+        return CommandResult()
 
     def _parse_directed_content(self, raw_msg: str):
         """Parse 'Name[, Name2, ...]=message' with optional pose/ooc flags.

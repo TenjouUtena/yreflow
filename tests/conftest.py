@@ -107,6 +107,18 @@ async def populated_store(store):
         exit_values.append({"rid": exit_rid})
     await store.set(f"core.room.{room_id}.exits", {"_value": exit_values})
 
+    # Load areas
+    for _key, area in fixtures.get("areas", {}).items():
+        area_id = area["id"]
+        data = {"name": area["name"], "rules": area.get("rules", "")}
+        if area.get("parent_id"):
+            data["parent"] = {"rid": f"core.area.{area['parent_id']}"}
+        await store.set(f"core.area.{area_id}", data)
+
+    # Link room to its area
+    room_model = store.get(f"core.room.{room_id}")
+    room_model["area"] = {"rid": f"core.area.{room['area_id']}"}
+
     # Set up character's inRoom pointer
     thorn_id = fixtures["characters"]["thorn"]["id"]
     await store.set(f"core.char.{thorn_id}.owned", {
@@ -119,6 +131,38 @@ async def populated_store(store):
         f"core.char.{puppet['puppeteer_id']}.puppet.{puppet['char_id']}",
         {"id": puppet["char_id"], "name": puppet["name"], "surname": puppet["surname"]},
     )
+
+    # Load room commands
+    cmd_values = []
+    for _key, cmd in fixtures.get("room_cmds", {}).items():
+        cmd_id = cmd["id"]
+        cmd_rid = f"core.roomcmd.{cmd_id}"
+        cmd_data = {
+            "pattern": cmd["pattern"],
+            "desc": cmd["desc"],
+        }
+        if "fields" in cmd:
+            fields = {}
+            for fname, fdef in cmd["fields"].items():
+                field_entry = {"type": fdef["type"], "desc": fdef["desc"]}
+                opts = {}
+                if "min" in fdef:
+                    opts["min"] = fdef["min"]
+                if "in_room" in fdef:
+                    opts["inRoom"] = fdef["in_room"]
+                if "state" in fdef:
+                    opts["state"] = fdef["state"]
+                if opts:
+                    field_entry["opts"] = opts
+                fields[fname] = field_entry
+            cmd_data["fields"] = fields
+        await store.set(cmd_rid, {
+            "cmd": {"data": cmd_data},
+            "id": cmd_id,
+            "priority": cmd.get("priority", 0),
+        })
+        cmd_values.append({"rid": cmd_rid})
+    await store.set(f"core.room.{room_id}.cmds", {"_value": cmd_values})
 
     return store
 

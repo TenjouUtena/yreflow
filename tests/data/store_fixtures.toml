@@ -63,3 +63,43 @@ char_id = "pup567tuv"
 puppeteer_id = "abc123def456"
 name = "Spark"
 surname = ""
+
+[areas.parent]
+id = "area001xyz"
+name = "Greenwood Village"
+rules = "Be kind and respectful."
+
+[areas.child]
+id = "area002abc"
+name = "Back Alley"
+rules = ""
+parent_id = "area001xyz"
+
+[areas.norules]
+id = "area003def"
+name = "Wilderness"
+rules = ""
+
+# Room commands — custom per-room commands
+[room_cmds.simple]
+id = "cmd001simple"
+pattern = "pull lever"
+desc = "Pull the lever on the cookie dispenser."
+priority = 100
+
+[room_cmds.with_fields]
+id = "cmd002fields"
+pattern = "give <Character> = <Amount>"
+desc = "Give coins to another character."
+priority = 0
+
+[room_cmds.with_fields.fields.Amount]
+type = "integer"
+desc = "Amount of coins to give."
+min = 1
+
+[room_cmds.with_fields.fields.Character]
+type = "char"
+desc = "The character to give coins to."
+in_room = true
+state = "awake"

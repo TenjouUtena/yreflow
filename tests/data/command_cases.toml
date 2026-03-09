@@ -331,3 +331,32 @@ expected_style = "mail"
 description = "mail more"
 input = "mail more"
 expected_style = "mail"
+
+# --- Whois ---
+[[case]]
+description = "whois command"
+input = "whois Pip"
+expected_style = "whois"
+
+# --- Rules ---
+[[case]]
+description = "rules command"
+input = "rules"
+expected_style = "rules"
+
+[[case]]
+description = "area rules alias"
+input = "area rules"
+expected_style = "rules"
+
+# --- Watch ---
+[[case]]
+description = "watch command"
+input = "watch Pip"
+expected_style = "watch"
+
+# --- Unwatch ---
+[[case]]
+description = "unwatch command"
+input = "unwatch Pip"
+expected_style = "unwatch"
