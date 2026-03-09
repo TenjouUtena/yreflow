@@ -334,6 +334,20 @@ class CommandHandler:
             "function": self.handle_nav,
         }
 
+        patterns["watch"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("watch "), lambda cmd: cmd[6:]),
+            ],
+            "function": self.handle_watch,
+        }
+
+        patterns["unwatch"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("unwatch "), lambda cmd: cmd[8:]),
+            ],
+            "function": self.handle_unwatch,
+        }
+
         patterns["mail"] = {
             "patterns": [
                 (lambda cmd: cmd == "mail", lambda cmd: ""),
@@ -906,6 +920,138 @@ class CommandHandler:
 
     async def handle_mail(self, content, cc: ControlledChar) -> CommandResult:
         return await self.mail_manager.process_command(content, cc)
+
+    async def handle_watch(self, content: str, cc: ControlledChar) -> CommandResult:
+        """Add a character to the watch list by name."""
+        char_name = content.strip()
+        if not char_name:
+            return CommandResult(success=False, notification="Usage: watch <name>")
+
+        # Try local resolution first (works for awake and previously-seen chars)
+        try:
+            target_id = parse_name(self.store, char_name, awake=False)
+            return await self._do_watch(target_id, cc.char_id)
+        except NameParseException:
+            pass
+
+        # Fall back to server-side lookup by charName
+        msg_id = await self.conn.send(
+            f"call.core.player.{self.conn.player}.getChar",
+            {"charName": char_name},
+        )
+        self.conn.add_message_wait(
+            msg_id,
+            lambda result, cid=cc.char_id: self._on_watch_getchar(result, cid),
+        )
+        return CommandResult(notification="Looking up...")
+
+    async def _do_watch(self, target_id: str, watcher_char_id: str) -> CommandResult:
+        """Send addWatcher for a resolved target."""
+        target_name = self.store.get_character_attribute(target_id, "name") or "?"
+        target_surname = self.store.get_character_attribute(target_id, "surname") or ""
+        full_name = f"{target_name} {target_surname}".strip()
+
+        await self.conn.send(
+            f"call.note.player.{self.conn.player}.watch.{target_id}.addWatcher",
+            {"charId": watcher_char_id},
+        )
+        return CommandResult(notification=f"Now watching {full_name}.")
+
+    async def _on_watch_getchar(self, result, watcher_char_id: str) -> None:
+        """Called when getChar resolves for watch. Sends addWatcher."""
+        if not result or "rid" not in result:
+            await self.conn.event_bus.publish(
+                "notification", text="Character not found."
+            )
+            return
+        target_id = result["rid"].split(".")[2]
+        target_name = self.store.get_character_attribute(target_id, "name") or "?"
+        target_surname = self.store.get_character_attribute(target_id, "surname") or ""
+        full_name = f"{target_name} {target_surname}".strip()
+
+        await self.conn.send(
+            f"call.note.player.{self.conn.player}.watch.{target_id}.addWatcher",
+            {"charId": watcher_char_id},
+        )
+        await self.conn.event_bus.publish(
+            "notification", text=f"Now watching {full_name}."
+        )
+
+    async def handle_unwatch(self, content: str, cc: ControlledChar) -> CommandResult:
+        """Remove a character from the watch list by name."""
+        char_name = content.strip()
+        if not char_name:
+            return CommandResult(success=False, notification="Usage: unwatch <name>")
+
+        # Try watch list first (most common case)
+        target_id = self._find_watched_char_id(char_name)
+        if not target_id:
+            # Try local name resolution
+            try:
+                target_id = parse_name(self.store, char_name, awake=False)
+            except NameParseException:
+                pass
+
+        if target_id:
+            await self.conn.send(
+                f"call.note.player.{self.conn.player}.watch.{target_id}.delete",
+            )
+            name = self.store.get_character_attribute(target_id, "name") or "?"
+            surname = self.store.get_character_attribute(target_id, "surname") or ""
+            return CommandResult(notification=f"Unwatched {name} {surname}".strip() + ".")
+
+        # Fall back to server-side lookup
+        msg_id = await self.conn.send(
+            f"call.core.player.{self.conn.player}.getChar",
+            {"charName": char_name},
+        )
+        self.conn.add_message_wait(
+            msg_id,
+            lambda result: self._on_unwatch_getchar(result),
+        )
+        return CommandResult(notification="Looking up...")
+
+    def _find_watched_char_id(self, name: str) -> str | None:
+        """Find a char ID in the watch list matching the given name."""
+        try:
+            watches = self.store.get(f"note.player.{self.conn.player}.watches")
+        except KeyError:
+            return None
+
+        name_lower = name.casefold()
+        for key in watches:
+            try:
+                char_note = self.store.get(watches[key]["rid"])
+                char_id = char_note["char"]["rid"].split(".")[2]
+                full = (
+                    (self.store.get_character_attribute(char_id, "name") or "")
+                    + " "
+                    + (self.store.get_character_attribute(char_id, "surname") or "")
+                ).strip()
+                if full.casefold().startswith(name_lower):
+                    return char_id
+            except (KeyError, IndexError):
+                continue
+        return None
+
+    async def _on_unwatch_getchar(self, result) -> None:
+        """Called when getChar resolves for unwatch."""
+        if not result or "rid" not in result:
+            await self.conn.event_bus.publish(
+                "notification", text="Character not found."
+            )
+            return
+        target_id = result["rid"].split(".")[2]
+        target_name = self.store.get_character_attribute(target_id, "name") or "?"
+        target_surname = self.store.get_character_attribute(target_id, "surname") or ""
+        full_name = f"{target_name} {target_surname}".strip()
+
+        await self.conn.send(
+            f"call.note.player.{self.conn.player}.watch.{target_id}.delete",
+        )
+        await self.conn.event_bus.publish(
+            "notification", text=f"Unwatched {full_name}."
+        )
 
     async def handle_describe(self, content: str, cc: ControlledChar) -> CommandResult:
         await self.conn.send(

@@ -294,7 +294,7 @@ class WolferyConnection:
             found = None
             for i in self.message_waits:
                 if i == j["id"]:
-                    result_payload = j["result"].get("payload", "")
+                    result_payload = j["result"].get("payload", j["result"])
                     await self.message_waits[i]["function"](result_payload)
                     found = i
             if found:

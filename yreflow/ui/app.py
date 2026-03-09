@@ -505,7 +505,10 @@ class WolferyApp(App):
         if not self.controller:
             return
         store = self.controller.store
-        words: set[str] = set()
+        words: set[str] = {
+            "unwatch", "whois", "laston", "teleport", "lfrp",
+            "unfocus", "ooc",
+        }
         try:
             chars = store.get("core.char")
             for key in chars:
