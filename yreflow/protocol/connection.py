@@ -371,11 +371,52 @@ class WolferyConnection:
             for s in self.default_subscriptions:
                 await self.send(s)
 
+    @staticmethod
+    def _format_roll(j: dict) -> str:
+        """Build Rich-markup string from a roll event's result/total."""
+        result = j.get("result", [])
+        total = j.get("total", 0)
+        formula_parts: list[str] = []
+        detail_parts: list[str] = []
+
+        for i, entry in enumerate(result):
+            op = entry.get("op", "+")
+            op_prefix = op if i > 0 else ""
+
+            if entry["type"] == "std":
+                count = entry["count"]
+                sides = entry["sides"]
+                dice = entry["dice"]
+                formula_parts.append(f"{op_prefix}{count}d{sides}")
+                dice_strs = [f"d{sides}·{v}" for v in dice]
+                inner = " + ".join(dice_strs)
+                if count > 1:
+                    inner = f"({inner})"
+                if i > 0:
+                    detail_parts.append(f" {op} {inner}")
+                else:
+                    detail_parts.append(inner)
+            elif entry["type"] == "mod":
+                value = entry["value"]
+                formula_parts.append(f"{op_prefix}{value}")
+                if i > 0:
+                    detail_parts.append(f" {op} {value}")
+                else:
+                    detail_parts.append(str(value))
+
+        formula = "".join(formula_parts)
+        detail = "".join(detail_parts)
+        return f"rolls {formula}: {total} [dim]{detail}[/dim]"
+
     async def _handle_output(self, j: dict, ctrl_id: str) -> None:
         frm = j.get("char", {"name": "", "id": ""})
         msg = j.get("msg", "")
         t = j.get("target", {"name": "", "id": ""})
         style = j["type"]
+
+        if style == "roll":
+            msg = self._format_roll(j)
+
         output = {"frm": frm, "msg": msg, "t": t, "j": j}
 
         if style in ("summon", "join"):

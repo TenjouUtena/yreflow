@@ -365,6 +365,13 @@ class CommandHandler:
             "function": self.handle_mail,
         }
 
+        patterns["roll"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("roll "), lambda cmd: cmd[5:]),
+            ],
+            "function": self.handle_roll,
+        }
+
         for style in patterns:
             for matcher, extractor in patterns[style]["patterns"]:
                 if matcher(command_text):
@@ -439,6 +446,12 @@ class CommandHandler:
     async def handle_pose(self, content, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
             f"call.{cc.ctrl_path}.pose", {"msg": content}
+        )
+        return CommandResult()
+
+    async def handle_roll(self, content, cc: ControlledChar) -> CommandResult:
+        await self.conn.send(
+            f"call.roller.char.{cc.char_id}.roll", {"roll": content.strip()}
         )
         return CommandResult()
 

@@ -572,7 +572,10 @@ class WolferyApp(App):
             sender = message["frm"].get("name","") + ' ' + message["frm"].get("surname","")
 
         sender_id = message["frm"].get("id", "")
-        msg_text = format_message(message.get("msg", ""), on_url=self._publish_url, **formatter_settings())
+        if style == "roll":
+            msg_text = message.get("msg", "")  # already Rich-formatted
+        else:
+            msg_text = format_message(message.get("msg", ""), on_url=self._publish_url, **formatter_settings())
         j = message.get("j", {})
         target = message.get("t", {})
         target_first_name = target.get("name", "")

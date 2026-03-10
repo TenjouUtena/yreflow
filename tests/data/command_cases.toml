@@ -360,3 +360,9 @@ expected_style = "watch"
 description = "unwatch command"
 input = "unwatch Pip"
 expected_style = "unwatch"
+
+# --- Roll ---
+[[case]]
+description = "roll command"
+input = "roll 1d20+5"
+expected_style = "roll"

@@ -24,6 +24,20 @@ class TestSimpleHandlers:
         assert method == "call.core.char.abc123def456.ctrl.pose"
         assert params == {"msg": "waves."}
 
+    async def test_handle_roll(self, handler, cc_thorn):
+        result = await handler.handle_roll("1d20+5", cc_thorn)
+        assert result.success
+        method, params = handler.conn.sent[-1]
+        assert method == "call.roller.char.abc123def456.roll"
+        assert params == {"roll": "1d20+5"}
+
+    async def test_handle_roll_puppet(self, handler, cc_puppet):
+        """Roll uses char_id, not ctrl_path."""
+        result = await handler.handle_roll("2d6", cc_puppet)
+        method, params = handler.conn.sent[-1]
+        assert method == "call.roller.char.pup567tuv.roll"
+        assert params == {"roll": "2d6"}
+
     async def test_handle_ooc_plain(self, handler, cc_thorn):
         result = await handler.handle_ooc({"msg": "brb", "pose": False}, cc_thorn)
         assert result.success
