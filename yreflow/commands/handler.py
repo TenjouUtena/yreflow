@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .name_resolver import parse_name, NameParseException
+from .room_cmd import match_room_commands
 
 
 def _relative_time(ms_timestamp: float) -> str:
@@ -57,8 +58,11 @@ class CommandResult:
 
 class CommandHandler:
     def __init__(self, connection: WolferyConnection, store: ModelStore):
+        from .mail_handler import MailManager
+
         self.conn = connection
         self.store = store
+        self.mail_manager = MailManager(connection, store)
 
     def detect_command_type(self, command_text: str):
         """Detect command type and return (style, content, handler_func)."""
@@ -249,6 +253,13 @@ class CommandHandler:
             "function": self.handle_look,
         }
 
+        patterns["whois"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("whois "), lambda cmd: cmd[6:]),
+            ],
+            "function": self.handle_whois,
+        }
+
         patterns["laston"] = {
             "patterns": [
                 (lambda cmd: cmd.startswith("laston "), lambda cmd: cmd[7:]),
@@ -262,6 +273,14 @@ class CommandHandler:
                 (lambda cmd: cmd.strip() == "whereat", lambda cmd: None),
             ],
             "function": self.handle_wa,
+        }
+
+        patterns["rules"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "rules", lambda cmd: None),
+                (lambda cmd: cmd.strip() == "area rules", lambda cmd: None),
+            ],
+            "function": self.handle_rules,
         }
 
         patterns["lookup"] = {
@@ -324,6 +343,28 @@ class CommandHandler:
             "function": self.handle_nav,
         }
 
+        patterns["watch"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("watch "), lambda cmd: cmd[6:]),
+            ],
+            "function": self.handle_watch,
+        }
+
+        patterns["unwatch"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("unwatch "), lambda cmd: cmd[8:]),
+            ],
+            "function": self.handle_unwatch,
+        }
+
+        patterns["mail"] = {
+            "patterns": [
+                (lambda cmd: cmd == "mail", lambda cmd: ""),
+                (lambda cmd: cmd.startswith("mail "), lambda cmd: cmd[5:]),
+            ],
+            "function": self.handle_mail,
+        }
+
         for style in patterns:
             for matcher, extractor in patterns[style]["patterns"]:
                 if matcher(command_text):
@@ -339,9 +380,32 @@ class CommandHandler:
         command_type, content, func_call = self.detect_command_type(command)
         if func_call:
             return await func_call(content, cc)
+
+        # Fallback: try room commands ("do <cmd>" is an explicit alias)
+        room_input = command
+        lower = command.lower()
+        if lower.startswith("do ") and len(command) > 3:
+            room_input = command[3:]
+        try:
+            result = match_room_commands(self.store, cc.char_path, room_input)
+            if result:
+                cmd_id, values, _ = result
+                return await self.handle_room_cmd(cmd_id, values, cc)
+        except (NameParseException, ValueError) as e:
+            return CommandResult(success=False, notification=str(e))
+
         return CommandResult(success=False, notification=f"Unknown command: {command}")
 
     # --- Handlers ---
+
+    async def handle_room_cmd(
+        self, cmd_id: str, values: dict | None, cc: ControlledChar
+    ) -> CommandResult:
+        await self.conn.send(
+            f"call.{cc.ctrl_path}.execRoomCmd",
+            {"cmdId": cmd_id, "values": values or None},
+        )
+        return CommandResult()
 
     def _parse_directed_content(self, raw_msg: str):
         """Parse 'Name[, Name2, ...]=message' with optional pose/ooc flags.
@@ -522,14 +586,11 @@ class CommandHandler:
         return None
 
     async def handle_go(self, exit_name, cc: ControlledChar) -> CommandResult:
-        the_exit = self._find_exit_by_key(cc, exit_name)
-        if not the_exit:
-            return CommandResult(
-                success=False, notification=f"Couldn't go {exit_name}"
-            )
+        # Send exitKey and let the server validate — this supports hidden exits
+        # that aren't in the local model store.
         await self.conn.send(
             f"call.{cc.ctrl_path}.useExit",
-            {"exitId": the_exit["id"]},
+            {"exitKey": exit_name},
         )
         return CommandResult()
 
@@ -696,8 +757,13 @@ class CommandHandler:
             )
         try:
             room = self.store.get(room_pointer)
-            area_path = room["details"]["area"]["rid"]
-        except KeyError:
+            area_ref = room.get("area", {})
+            if not (isinstance(area_ref, dict) and "rid" in area_ref):
+                details = room.get("details", {})
+                if isinstance(details, dict):
+                    area_ref = details.get("area", {})
+            area_path = area_ref["rid"]
+        except (KeyError, TypeError):
             return CommandResult(
                 success=False, notification=f"Could not determine current area. {room}"
             )
@@ -758,6 +824,49 @@ class CommandHandler:
 
         return result
 
+    async def handle_rules(self, content, cc: ControlledChar) -> CommandResult:
+        """Show area rules by walking up the area hierarchy."""
+        room_pointer = self.store.get_room_rid(cc.char_path)
+        if not room_pointer:
+            return CommandResult(
+                success=False, notification="Could not determine current room."
+            )
+        try:
+            room = self.store.get(room_pointer)
+            area_ref = room.get("area", {})
+            if not (isinstance(area_ref, dict) and "rid" in area_ref):
+                details = room.get("details", {})
+                if isinstance(details, dict):
+                    area_ref = details.get("area", {})
+            area_path = area_ref["rid"]
+        except (KeyError, TypeError):
+            return CommandResult(
+                success=False, notification="Could not determine current area."
+            )
+
+        # Walk up the area hierarchy looking for rules
+        while area_path:
+            try:
+                area = self.store.get(area_path)
+                details = area.get("details", area)
+                rules = details.get("rules", "")
+                if rules:
+                    area_name = details.get("name", "Area")
+                    return CommandResult(look_data={
+                        "type": "rules",
+                        "name": f"{area_name} Rules",
+                        "rules": rules,
+                    })
+                parent = area.get("parent") or details.get("parent")
+                if isinstance(parent, dict) and "rid" in parent:
+                    area_path = parent["rid"]
+                else:
+                    area_path = None
+            except KeyError:
+                break
+
+        return CommandResult(notification="No area rules found.")
+
     async def handle_laston(self, name_to_check, cc: ControlledChar) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_check, awake=False)
@@ -779,6 +888,70 @@ class CommandHandler:
         return CommandResult(
             display_text=f"{char_name} was last online {last_awake}"
         )
+
+    async def handle_whois(self, name_to_check, cc: ControlledChar) -> CommandResult:
+        try:
+            target_id = parse_name(self.store, name_to_check, awake=False)
+        except NameParseException as e:
+            return CommandResult(success=False, notification=str(e))
+
+        msg_id = await self.conn.send(
+            f"call.core.player.{self.conn.player}.getChar",
+            {"charId": target_id},
+        )
+        self.conn.add_message_wait(
+            msg_id,
+            lambda _result, tid=target_id: self._on_whois_result(tid),
+        )
+        return CommandResult(notification="Looking up...")
+
+    async def _on_whois_result(self, char_id: str) -> None:
+        """Called when the getChar response arrives. Publishes whois data."""
+        s = self.store
+        name = s.get_character_attribute(char_id, "name") or "?"
+        surname = s.get_character_attribute(char_id, "surname") or ""
+        full_name = f"{name} {surname}".strip()
+        species = s.get_character_attribute(char_id, "species") or ""
+        gender = s.get_character_attribute(char_id, "gender") or ""
+        status = s.get_character_attribute(char_id, "status") or ""
+        avatar = s.get_character_attribute(char_id, "avatar", default="")
+
+        # Tags (reuse same logic as _gather_character_data)
+        tags = []
+        try:
+            tags_ref = s.get_character_attribute(char_id, "tags")
+            if isinstance(tags_ref, dict) and "rid" in tags_ref:
+                tags_model = s.get(tags_ref["rid"])
+                for key, entry in tags_model.items():
+                    if not isinstance(entry, dict) or "rid" not in entry:
+                        continue
+                    try:
+                        tag_info = s.get(entry["rid"])
+                        like = "_like" in key
+                        tags.append({
+                            "key": tag_info.get("key", key),
+                            "desc": tag_info.get("desc", ""),
+                            "like": like,
+                        })
+                    except KeyError:
+                        continue
+        except (KeyError, TypeError):
+            pass
+
+        data = {
+            "type": "whois",
+            "char_id": char_id,
+            "name": full_name,
+            "species": species.capitalize() if species else "",
+            "gender": gender.capitalize() if gender else "",
+            "status": status,
+            "tags": tags,
+            "avatar": avatar,
+            "auth_token": self.conn.token or "",
+            "file_base_url": self.conn.realm.file_url,
+            "cookie_name": self.conn.realm.cookie_name,
+        }
+        await self.conn.event_bus.publish("whois.result", data=data)
 
     async def handle_look(self, content, cc: ControlledChar) -> CommandResult:
         if content is None:
@@ -819,6 +992,141 @@ class CommandHandler:
 
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)
+
+    async def handle_mail(self, content, cc: ControlledChar) -> CommandResult:
+        return await self.mail_manager.process_command(content, cc)
+
+    async def handle_watch(self, content: str, cc: ControlledChar) -> CommandResult:
+        """Add a character to the watch list by name."""
+        char_name = content.strip()
+        if not char_name:
+            return CommandResult(success=False, notification="Usage: watch <name>")
+
+        # Try local resolution first (works for awake and previously-seen chars)
+        try:
+            target_id = parse_name(self.store, char_name, awake=False)
+            return await self._do_watch(target_id, cc.char_id)
+        except NameParseException:
+            pass
+
+        # Fall back to server-side lookup by charName
+        msg_id = await self.conn.send(
+            f"call.core.player.{self.conn.player}.getChar",
+            {"charName": char_name},
+        )
+        self.conn.add_message_wait(
+            msg_id,
+            lambda result, cid=cc.char_id: self._on_watch_getchar(result, cid),
+        )
+        return CommandResult(notification="Looking up...")
+
+    async def _do_watch(self, target_id: str, watcher_char_id: str) -> CommandResult:
+        """Send addWatcher for a resolved target."""
+        target_name = self.store.get_character_attribute(target_id, "name") or "?"
+        target_surname = self.store.get_character_attribute(target_id, "surname") or ""
+        full_name = f"{target_name} {target_surname}".strip()
+
+        await self.conn.send(
+            f"call.note.player.{self.conn.player}.watch.{target_id}.addWatcher",
+            {"charId": watcher_char_id},
+        )
+        return CommandResult(notification=f"Now watching {full_name}.")
+
+    async def _on_watch_getchar(self, result, watcher_char_id: str) -> None:
+        """Called when getChar resolves for watch. Sends addWatcher."""
+        if not result or "rid" not in result:
+            await self.conn.event_bus.publish(
+                "notification", text="Character not found."
+            )
+            return
+        target_id = result["rid"].split(".")[2]
+        target_name = self.store.get_character_attribute(target_id, "name") or "?"
+        target_surname = self.store.get_character_attribute(target_id, "surname") or ""
+        full_name = f"{target_name} {target_surname}".strip()
+
+        await self.conn.send(
+            f"call.note.player.{self.conn.player}.watch.{target_id}.addWatcher",
+            {"charId": watcher_char_id},
+        )
+        await self.conn.event_bus.publish(
+            "notification", text=f"Now watching {full_name}."
+        )
+
+    async def handle_unwatch(self, content: str, cc: ControlledChar) -> CommandResult:
+        """Remove a character from the watch list by name."""
+        char_name = content.strip()
+        if not char_name:
+            return CommandResult(success=False, notification="Usage: unwatch <name>")
+
+        # Try watch list first (most common case)
+        target_id = self._find_watched_char_id(char_name)
+        if not target_id:
+            # Try local name resolution
+            try:
+                target_id = parse_name(self.store, char_name, awake=False)
+            except NameParseException:
+                pass
+
+        if target_id:
+            await self.conn.send(
+                f"call.note.player.{self.conn.player}.watch.{target_id}.delete",
+            )
+            name = self.store.get_character_attribute(target_id, "name") or "?"
+            surname = self.store.get_character_attribute(target_id, "surname") or ""
+            return CommandResult(notification=f"Unwatched {name} {surname}".strip() + ".")
+
+        # Fall back to server-side lookup
+        msg_id = await self.conn.send(
+            f"call.core.player.{self.conn.player}.getChar",
+            {"charName": char_name},
+        )
+        self.conn.add_message_wait(
+            msg_id,
+            lambda result: self._on_unwatch_getchar(result),
+        )
+        return CommandResult(notification="Looking up...")
+
+    def _find_watched_char_id(self, name: str) -> str | None:
+        """Find a char ID in the watch list matching the given name."""
+        try:
+            watches = self.store.get(f"note.player.{self.conn.player}.watches")
+        except KeyError:
+            return None
+
+        name_lower = name.casefold()
+        for key in watches:
+            try:
+                char_note = self.store.get(watches[key]["rid"])
+                char_id = char_note["char"]["rid"].split(".")[2]
+                full = (
+                    (self.store.get_character_attribute(char_id, "name") or "")
+                    + " "
+                    + (self.store.get_character_attribute(char_id, "surname") or "")
+                ).strip()
+                if full.casefold().startswith(name_lower):
+                    return char_id
+            except (KeyError, IndexError):
+                continue
+        return None
+
+    async def _on_unwatch_getchar(self, result) -> None:
+        """Called when getChar resolves for unwatch."""
+        if not result or "rid" not in result:
+            await self.conn.event_bus.publish(
+                "notification", text="Character not found."
+            )
+            return
+        target_id = result["rid"].split(".")[2]
+        target_name = self.store.get_character_attribute(target_id, "name") or "?"
+        target_surname = self.store.get_character_attribute(target_id, "surname") or ""
+        full_name = f"{target_name} {target_surname}".strip()
+
+        await self.conn.send(
+            f"call.note.player.{self.conn.player}.watch.{target_id}.delete",
+        )
+        await self.conn.event_bus.publish(
+            "notification", text=f"Unwatched {full_name}."
+        )
 
     async def handle_describe(self, content: str, cc: ControlledChar) -> CommandResult:
         await self.conn.send(
@@ -863,6 +1171,11 @@ class CommandHandler:
         try:
             room_model = self.store.get(f"core.room.{room_id}")
             area_ref = room_model.get("area", {})
+            if not (isinstance(area_ref, dict) and "rid" in area_ref):
+                # area may be nested under details
+                details = room_model.get("details", {})
+                if isinstance(details, dict):
+                    area_ref = details.get("area", {})
             if isinstance(area_ref, dict) and "rid" in area_ref:
                 area_path = area_ref["rid"]
                 while area_path:
@@ -980,17 +1293,8 @@ class CommandHandler:
         except (KeyError, TypeError):
             pass
 
-        # Image URL from RID chain
-        image_url = ""
-        try:
-            image_ref = s.get_character_attribute(char_id, "image")
-            if isinstance(image_ref, dict) and "rid" in image_ref:
-                image_model = s.get(image_ref["rid"])
-                href = image_model.get("href", "")
-                if href:
-                    image_url = href
-        except (KeyError, TypeError):
-            pass
+        # Avatar key
+        avatar = s.get_character_attribute(char_id, "avatar", default="")
 
         return {
             "type": "character",
@@ -1001,6 +1305,8 @@ class CommandHandler:
             "desc": desc,
             "about": about,
             "tags": tags,
-            "image_url": image_url,
+            "avatar": avatar,
             "auth_token": self.conn.token or "",
+            "file_base_url": self.conn.realm.file_url,
+            "cookie_name": self.conn.realm.cookie_name,
         }

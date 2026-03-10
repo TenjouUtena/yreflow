@@ -128,6 +128,22 @@ class InputBar(Input):
         self.cursor_position = len(self.value)
 
 
+    def apply_completions(self, results: list[str], prefix_len: int) -> None:
+        """Apply externally-provided completions (e.g. from a plugin).
+
+        Args:
+            results: List of completion strings.
+            prefix_len: Length of the prefix the user already typed for this slot.
+        """
+        if not results:
+            return
+        self._autocomplete_to = self.cursor_position - 1
+        self._autocomplete_length = prefix_len
+        self._autocomplete_history = deque(results)
+        self._autocompleting = True
+        self.value += results[0][prefix_len:]
+        self.cursor_position = len(self.value)
+
     async def _on_key(self, event: Key) -> None:
         if event.key == 'backspace' and self._autocompleting:
             self.value = self.value[0:self._autocomplete_to+2]

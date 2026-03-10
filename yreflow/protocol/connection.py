@@ -40,6 +40,7 @@ from .state import State
 from .model_store import ModelStore
 from .events import EventBus
 from .controlled_char import ControlledChar
+from .realm import Realm, DEFAULT_REALM_KEY
 
 
 class WolferyConnection:
@@ -48,10 +49,14 @@ class WolferyConnection:
     All UI coupling has been replaced with EventBus publishes.
     """
 
-    def __init__(self, config: dict, store: ModelStore, event_bus: EventBus):
+    def __init__(self, config: dict, store: ModelStore, event_bus: EventBus,
+                 realm: Realm | None = None):
         self.config = config
         self.store = store
         self.event_bus = event_bus
+        self.realm = realm or Realm.from_key(
+            config.get("realm", DEFAULT_REALM_KEY)
+        )
 
         self.token: str | None = config.get("token")
         self.default_subscriptions: list[str] = _DEFAULT_SUBSCRIPTIONS
@@ -219,10 +224,10 @@ class WolferyConnection:
     # --- WebSocket connection ---
 
     async def connect(self) -> None:
-        uri = "wss://api.wolfery.com/"
+        uri = self.realm.ws_url
         headers = {}
         if self.auth_mode == "token" and self.token:
-            headers["Cookie"] = f"wolfery-auth-token={self.token}"
+            headers["Cookie"] = f"{self.realm.cookie_name}={self.token}"
         try:
             async with connect(
                 uri,
@@ -289,7 +294,7 @@ class WolferyConnection:
             found = None
             for i in self.message_waits:
                 if i == j["id"]:
-                    result_payload = j["result"].get("payload", "")
+                    result_payload = j["result"].get("payload", j["result"])
                     await self.message_waits[i]["function"](result_payload)
                     found = i
             if found:

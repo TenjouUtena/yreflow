@@ -12,7 +12,7 @@ import pytest
 
 from yreflow.formatter import format_message
 
-CASES_FILE = Path(__file__).with_name("formatter_cases.toml")
+CASES_FILE = Path(__file__).parent / "data" / "formatter_cases.toml"
 
 def _load_cases() -> list[dict]:
     with open(CASES_FILE, "rb") as f:

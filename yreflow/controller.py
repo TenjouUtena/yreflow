@@ -15,6 +15,7 @@ from .protocol.controlled_char import ControlledChar
 from .protocol.http_auth import obtain_token
 from .commands.handler import CommandHandler, CommandResult
 from .commands.console_handler import ConsoleHandler
+from .plugins import PluginManager
 from .url_catcher import UrlCatcher
 from .config import load_config, save_token, clear_token
 
@@ -31,6 +32,7 @@ class Controller:
         self.commands = CommandHandler(self.connection, self.store)
         self.console_commands = ConsoleHandler(self.connection, self.store)
         self.url_catcher = UrlCatcher(self.event_bus)
+        self.plugin_manager = PluginManager(self.event_bus, self.store, self.connection)
         self._reconnect_delay = 5.0
 
         # Subscribe to protocol events
@@ -46,16 +48,24 @@ class Controller:
         self.event_bus.subscribe(r"^connection\.failed$", self._on_connection_failed)
         self.event_bus.subscribe(r"^look\.result$", self._on_look_result)
         self.event_bus.subscribe(r"^look\.update$", self._on_look_update)
+        self.event_bus.subscribe(r"^whois\.result$", self._on_whois_result)
         self.event_bus.subscribe(r"^auth\.failed$", self._on_auth_failed)
         self.event_bus.subscribe(r"^auth\.token_expired$", self._on_token_expired)
         self.event_bus.subscribe(r"^system\.text$", self._on_system_text)
         self.event_bus.subscribe(r"^protocol\.error$", self._on_protocol_error)
+        self.event_bus.subscribe(r"^mail\.result$", self._on_mail_result)
+        self.event_bus.subscribe(r"^autocomplete\.results$", self._on_autocomplete_results)
 
         # Rebuild sidebar when any character's LFRP or idle status changes
         self.store.add_watch(r"^core\.char\.[^.]+\.lfrp", self._on_char_changed)
         self.store.add_watch(r"^core\.char\.[^.]+\.idle", self._on_char_changed)
 
+        # Notify unread mail on first load after connect
+        self._mail_notified = False
+        self.store.add_watch(r"^mail\.player\.\w+\.unread", self._on_mail_unread)
+
     async def start(self) -> None:
+        await self.plugin_manager.discover_builtin()
         await self.connection.connect()
 
     async def start_with_credentials(self, username: str, password: str) -> None:
@@ -64,6 +74,7 @@ class Controller:
         save_token(token)
         self.connection.token = token
         self.connection.auth_mode = "token"
+        await self.plugin_manager.discover_builtin()
         await self.connection.connect()
 
     async def handle_command(self, command: str, ctrl_id: str) -> CommandResult:
@@ -122,6 +133,7 @@ class Controller:
 
     async def _on_connection_established(self, event_name: str, **kw) -> None:
         self._reconnect_delay = 5.0
+        self._mail_notified = False
         await self.ui.update_connection_status("connected")
 
     async def _on_connection_closed(self, event_name: str, **kw) -> None:
@@ -137,7 +149,8 @@ class Controller:
 
     async def _on_connection_failed(self, event_name: str, **kw) -> None:
         await self.ui.update_connection_status("disconnected")
-        await self.ui.display_system_text("Could not connect to Wolfery!")
+        realm_name = self.connection.realm.key.capitalize()
+        await self.ui.display_system_text(f"Could not connect to {realm_name}!")
 
     async def _on_look_result(self, event_name: str, data: dict, **kw) -> None:
         self._active_look_screen = await self.ui.display_look(
@@ -148,6 +161,9 @@ class Controller:
         screen = getattr(self, "_active_look_screen", None)
         if screen is not None:
             await screen.update_data(data)
+
+    async def _on_whois_result(self, event_name: str, data: dict, **kw) -> None:
+        await self.ui.display_look(data, on_dismiss=None)
 
     def _on_look_dismissed(self) -> None:
         self._active_look_screen = None
@@ -173,3 +189,20 @@ class Controller:
         self.connection.token = None
         self.connection.auth_mode = "password"
         await self.ui.show_login(error="Session expired. Please log in again.")
+
+    async def _on_mail_result(self, event_name: str, text: str, **kw) -> None:
+        await self.ui.display_system_text(text)
+
+    async def _on_mail_unread(self, path: str, payload) -> None:
+        if self._mail_notified:
+            return
+        self._mail_notified = True
+        count = self.commands.mail_manager.check_unread()
+        if count > 0:
+            plural = "s" if count != 1 else ""
+            await self.ui.notify(f"You have {count} unread message{plural}.")
+
+    async def _on_autocomplete_results(
+        self, event_name: str, results: list[str], prefix_len: int, **kw
+    ) -> None:
+        await self.ui.apply_completions(results, prefix_len)

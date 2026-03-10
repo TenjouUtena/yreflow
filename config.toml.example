@@ -6,3 +6,7 @@
 
 # Optional: skip the login screen by providing a token.
 # token = "your-wolfery-auth-token-here"
+
+# Realm to connect to (default: wolfery).
+# Known realms: wolfery, aurellion, lastflameinn
+# realm = "wolfery"

@@ -310,3 +310,53 @@ expected_style = "describe"
 description = "nav command"
 input = "nav"
 expected_style = "nav"
+
+# --- Mail ---
+[[case]]
+description = "mail list inbox"
+input = "mail"
+expected_style = "mail"
+
+[[case]]
+description = "mail send"
+input = "mail send Pip = hello"
+expected_style = "mail"
+
+[[case]]
+description = "mail read"
+input = "mail read 1"
+expected_style = "mail"
+
+[[case]]
+description = "mail more"
+input = "mail more"
+expected_style = "mail"
+
+# --- Whois ---
+[[case]]
+description = "whois command"
+input = "whois Pip"
+expected_style = "whois"
+
+# --- Rules ---
+[[case]]
+description = "rules command"
+input = "rules"
+expected_style = "rules"
+
+[[case]]
+description = "area rules alias"
+input = "area rules"
+expected_style = "rules"
+
+# --- Watch ---
+[[case]]
+description = "watch command"
+input = "watch Pip"
+expected_style = "watch"
+
+# --- Unwatch ---
+[[case]]
+description = "unwatch command"
+input = "unwatch Pip"
+expected_style = "unwatch"

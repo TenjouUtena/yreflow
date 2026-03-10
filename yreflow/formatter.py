@@ -142,10 +142,11 @@ def format_message(
 
     def _replace_code(m):
         idx = len(code_blocks)
-        code_blocks.append(m.group(1))
+        code_blocks.append((m.group(1),m.group(2)))
         return _CODE_PLACEHOLDER.format(idx)
 
-    msg_text = re.sub(r"`(.*?)`", _replace_code, msg_text, flags=re.DOTALL)
+    msg_text = re.sub(r"`(.*?)`(\W)", _replace_code, msg_text, flags=re.DOTALL)
+    msg_text = re.sub(r"`(.*?)`()$", _replace_code, msg_text, flags=re.DOTALL)
 
     # First pass: extract markdown links before character-level processing
     # so they don't interfere with Rich markup brackets
@@ -384,10 +385,10 @@ def format_message(
         )
 
     # Restore `code` spans as goldenrod escaped text (no formatting applied)
-    for i, raw in enumerate(code_blocks):
+    for i, (raw, spc) in enumerate(code_blocks):
         placeholder = _CODE_PLACEHOLDER.format(i)
         safe = raw.replace("[", "\\[")
-        out = out.replace(placeholder, f"[dark_goldenrod]{safe}[/dark_goldenrod]")
+        out = out.replace(placeholder, f"[dark_goldenrod]{safe}[/dark_goldenrod]{spc}")
 
     # Restore <esc> blocks as plain escaped text (no formatting applied)
     for i, raw in enumerate(esc_blocks):

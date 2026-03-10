@@ -61,3 +61,7 @@ class UIProtocol(Protocol):
     async def blink_connection_indicator(self) -> None:
         """Flash the connection indicator to show activity."""
         ...
+
+    async def apply_completions(self, results: list[str], prefix_len: int) -> None:
+        """Apply autocomplete results from a plugin to the input bar."""
+        ...

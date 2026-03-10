@@ -95,7 +95,7 @@ def format_line(
         return f'{ts}[bold cyan]{sender}[/bold cyan] ({label}) says, "{msg}"'
 
     if style == "describe":
-        return f"{ts}[italic]{msg}[/italic] [dim]({sender})[/dim]"
+        return f"{ts}[italic]{msg}[/italic]{'[dim](' + sender + ')[/dim]' if sender != ' ' else ''}"
 
     if style in ("arrive", "leave", "travel", "sleep", "action", "wakeup"):
         return f"{ts}[dim][bold]{sender}[/bold] {msg}[/dim]"
