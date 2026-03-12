@@ -159,6 +159,7 @@ class CommandHandler:
         patterns["teleport"] = {
             "patterns": [
                 (lambda cmd: cmd.startswith("teleport "), lambda cmd: cmd[9:]),
+                (lambda cmd: cmd.startswith("tport "), lambda cmd: cmd[6:]),
                 (lambda cmd: cmd.startswith("t "), lambda cmd: cmd[2:]),
             ],
             "function": self.handle_teleport,

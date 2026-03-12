@@ -9,6 +9,8 @@ from yreflow.commands.completion import (
     CompletionType,
     detect_completion_context,
     resolve_names,
+    resolve_exits,
+    resolve_teleport_nodes,
 )
 
 
@@ -327,4 +329,160 @@ class TestResolveNames:
             completion_store, "Zzzzz", CompletionType.LOCAL_PREFERRED,
             CHAR_PATH, PLAYER, prose=False,
         )
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# detect_completion_context: go / teleport / tport
+# ---------------------------------------------------------------------------
+
+class TestDetectCompletionContextGoTeleport:
+
+    @pytest.mark.parametrize("text", ["go mar", "go north"])
+    def test_go_exits(self, text):
+        ctx = detect_completion_context(text)
+        assert ctx.completion_type == CompletionType.EXITS
+        assert ctx.prose is False
+
+    def test_go_prefix_extraction(self):
+        ctx = detect_completion_context("go mar")
+        assert ctx.prefix == "mar"
+
+    @pytest.mark.parametrize("text,expected_prefix", [
+        ("teleport hom", "hom"),
+        ("tport hom", "hom"),
+        ("t hom", "hom"),
+    ])
+    def test_teleport_nodes(self, text, expected_prefix):
+        ctx = detect_completion_context(text)
+        assert ctx.completion_type == CompletionType.TELEPORT_NODES
+        assert ctx.prefix == expected_prefix
+        assert ctx.prose is False
+
+
+# ---------------------------------------------------------------------------
+# resolve_exits tests
+# ---------------------------------------------------------------------------
+
+@pytest_asyncio.fixture
+async def exit_store():
+    """ModelStore with room exits."""
+    store = ModelStore(event_bus=EventBus())
+
+    room_id = "room01"
+    await store.set(f"core.room.{room_id}", {"id": room_id, "name": "Test Room"})
+
+    # Set up exits
+    exit0_rid = f"core.room.{room_id}.exit.exit000"
+    await store.set(exit0_rid, {
+        "id": "exit000", "name": "Market Square",
+        "keys": {"data": ["market", "north"]},
+    })
+    exit1_rid = f"core.room.{room_id}.exit.exit001"
+    await store.set(exit1_rid, {
+        "id": "exit001", "name": "Back Alley",
+        "keys": {"data": ["alley", "south"]},
+    })
+    await store.set(f"core.room.{room_id}.exits", {
+        "_value": [{"rid": exit0_rid}, {"rid": exit1_rid}]
+    })
+
+    # Character in this room
+    await store.set("core.char.char01.owned", {
+        "inRoom": {"rid": f"core.room.{room_id}"},
+    })
+
+    return store
+
+
+class TestResolveExits:
+
+    def test_all_exits_with_empty_prefix(self, exit_store):
+        results = resolve_exits(exit_store, "", "core.char.char01")
+        assert "Market Square" in results
+        assert "Back Alley" in results
+
+    def test_exit_name_prefix_match(self, exit_store):
+        results = resolve_exits(exit_store, "Mar", "core.char.char01")
+        assert "Market Square" in results
+        assert "Back Alley" not in results
+
+    def test_exit_key_prefix_match(self, exit_store):
+        results = resolve_exits(exit_store, "nor", "core.char.char01")
+        assert "north" in results
+        assert "Market Square" not in results  # "Market" doesn't start with "nor"
+
+    def test_case_insensitive(self, exit_store):
+        results = resolve_exits(exit_store, "back", "core.char.char01")
+        assert "Back Alley" in results
+
+    def test_no_char_path_returns_empty(self, exit_store):
+        results = resolve_exits(exit_store, "", None)
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# resolve_teleport_nodes tests
+# ---------------------------------------------------------------------------
+
+@pytest_asyncio.fixture
+async def teleport_store():
+    """ModelStore with character-specific and global teleport nodes."""
+    store = ModelStore(event_bus=EventBus())
+
+    # Character-specific nodes
+    char_node_rid = "core.node.charnode01"
+    await store.set(char_node_rid, {"id": "charnode01", "key": "home"})
+    await store.set("core.char.char01.nodes", {
+        "_value": [{"rid": char_node_rid}],
+    })
+
+    # Global nodes
+    await store.set("core.node.global01", {"id": "global01", "key": "haven"})
+    await store.set("core.node.global02", {"id": "global02", "key": "hub"})
+
+    return store
+
+
+class TestResolveTeleportNodes:
+
+    def test_char_specific_nodes(self, teleport_store):
+        results = resolve_teleport_nodes(teleport_store, "ho", "core.char.char01")
+        assert "home" in results
+
+    def test_global_nodes(self, teleport_store):
+        results = resolve_teleport_nodes(teleport_store, "ha", "core.char.char01")
+        assert "haven" in results
+
+    def test_all_nodes_with_h_prefix(self, teleport_store):
+        results = resolve_teleport_nodes(teleport_store, "h", "core.char.char01")
+        assert "home" in results
+        assert "haven" in results
+        assert "hub" in results
+
+    def test_char_nodes_before_global(self, teleport_store):
+        """Character-specific nodes should appear before global nodes."""
+        results = resolve_teleport_nodes(teleport_store, "h", "core.char.char01")
+        home_idx = results.index("home")
+        haven_idx = results.index("haven")
+        assert home_idx < haven_idx
+
+    def test_deduplication(self, teleport_store):
+        """If a key appears in both char and global, only list once."""
+        import asyncio
+        # Add "home" as a global node too
+        asyncio.get_event_loop().run_until_complete(
+            teleport_store.set("core.node.global03", {"id": "global03", "key": "home"})
+        )
+        results = resolve_teleport_nodes(teleport_store, "ho", "core.char.char01")
+        assert results.count("home") == 1
+
+    def test_no_char_path_still_returns_global(self, teleport_store):
+        results = resolve_teleport_nodes(teleport_store, "h", None)
+        assert "haven" in results
+        assert "hub" in results
+        assert "home" not in results  # char-specific only
+
+    def test_no_match_returns_empty(self, teleport_store):
+        results = resolve_teleport_nodes(teleport_store, "zzz", "core.char.char01")
         assert results == []

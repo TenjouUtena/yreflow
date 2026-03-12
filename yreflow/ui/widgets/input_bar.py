@@ -9,7 +9,9 @@ from textual.widgets import Input
 
 from ..highlighters import CompositeHighlighter, MarkupPreviewHighlighter, SpellCheckHighlighter
 
-from ...commands.completion import detect_completion_context, resolve_names, CompletionType
+from ...commands.completion import (
+    detect_completion_context, resolve_names, resolve_exits, resolve_teleport_nodes, CompletionType,
+)
 
 # Keys that should pass through to app-level bindings even when input is focused.
 _PASSTHROUGH_KEYS = {
@@ -126,10 +128,15 @@ class InputBar(Input):
         char_path = self.app._resolve_char_path(self.app.active_character) if self.app.active_character else None
         player = controller.connection.player
 
-        results = resolve_names(
-            controller.store, ctx.prefix, ctx.completion_type,
-            char_path, player, ctx.prose,
-        )
+        if ctx.completion_type == CompletionType.EXITS:
+            results = resolve_exits(controller.store, ctx.prefix, char_path)
+        elif ctx.completion_type == CompletionType.TELEPORT_NODES:
+            results = resolve_teleport_nodes(controller.store, ctx.prefix, char_path)
+        else:
+            results = resolve_names(
+                controller.store, ctx.prefix, ctx.completion_type,
+                char_path, player, ctx.prose,
+            )
         if not results:
             return
 

@@ -15,6 +15,8 @@ class CompletionType(Enum):
     LOCAL_PREFERRED = auto()       # room → watch → online
     AWAKE_WATCH_PREFERRED = auto() # awake only, watch → online
     WATCH_PREFERRED = auto()       # watch → online
+    EXITS = auto()                 # room exit names/keys
+    TELEPORT_NODES = auto()        # teleport node keys
     NONE = auto()                  # no name completion
 
 
@@ -62,6 +64,8 @@ _UNDIRECTED_NAME_RULES: list[tuple[tuple[str, ...], CompletionType]] = [
     (("follow ",),            CompletionType.LOCAL_ONLY),
     (("focus ",),             CompletionType.LOCAL_ONLY),
     (("unfocus ",),           CompletionType.LOCAL_ONLY),
+    (("go ",),                CompletionType.EXITS),
+    (("teleport ", "tport ", "t "), CompletionType.TELEPORT_NODES),
 ]
 
 
@@ -232,5 +236,81 @@ def resolve_names(
                     results.append(fullname)
             else:
                 results.append(fullname)
+
+    return results
+
+
+def resolve_exits(
+    store: ModelStore,
+    prefix: str,
+    char_path: str | None,
+) -> list[str]:
+    """Build a list of matching exit names for the current room."""
+    if not char_path:
+        return []
+    room_pointer = store.get_room_rid(char_path)
+    if not room_pointer:
+        return []
+
+    results: list[str] = []
+    for entry in store.get_room_exits(room_pointer):
+        try:
+            exit_data = store.get(entry["rid"])
+        except (KeyError, TypeError):
+            continue
+        name = exit_data.get("name", "")
+        if name and _matches_prefix(name, prefix):
+            results.append(name)
+        # Also match on exit keys (e.g. "north", "market")
+        keys_data = exit_data.get("keys", {})
+        key_list = keys_data.get("data", keys_data) if isinstance(keys_data, dict) else keys_data
+        if isinstance(key_list, list):
+            for key in key_list:
+                if key and _matches_prefix(key, prefix) and key not in results:
+                    results.append(key)
+    return results
+
+
+def resolve_teleport_nodes(
+    store: ModelStore,
+    prefix: str,
+    char_path: str | None,
+) -> list[str]:
+    """Build a list of matching teleport node keys.
+
+    Checks character-specific nodes first, then global nodes.
+    """
+    results: list[str] = []
+    seen: set[str] = set()
+
+    # Character-specific nodes
+    if char_path:
+        try:
+            node_refs = store.get(f"{char_path}.nodes._value")
+            for ref in node_refs:
+                try:
+                    node_data = store.get(ref["rid"])
+                    key = node_data.get("key", "")
+                    if key and key not in seen and _matches_prefix(key, prefix):
+                        results.append(key)
+                        seen.add(key)
+                except (KeyError, TypeError):
+                    continue
+        except KeyError:
+            pass
+
+    # Global nodes
+    try:
+        nodes = store.get("core.node")
+        for node_key in nodes:
+            node_data = nodes[node_key]
+            if not isinstance(node_data, dict):
+                continue
+            key = node_data.get("key", "")
+            if key and key not in seen and _matches_prefix(key, prefix):
+                results.append(key)
+                seen.add(key)
+    except KeyError:
+        pass
 
     return results

@@ -498,7 +498,11 @@ class WolferyConnection:
             msg["params"] = params
         raw = json.dumps(msg)
         self.log_to_file(f"OUTGOING: {raw}")
-        await self.wsock.send(raw)
+        try:
+            await self.wsock.send(raw)
+        except websockets.exceptions.ConnectionClosedError:
+            self.log_to_file("SEND FAILED: connection already closed")
+            return 0
         await asyncio.sleep(0)
         return self.id
 
