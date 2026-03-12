@@ -259,6 +259,7 @@ class CommandHandler:
         patterns["whois"] = {
             "patterns": [
                 (lambda cmd: cmd.startswith("whois "), lambda cmd: cmd[6:]),
+                (lambda cmd: cmd.startswith("wi "),    lambda cmd: cmd[3:]),
             ],
             "function": self.handle_whois,
         }
