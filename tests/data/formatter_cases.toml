@@ -230,12 +230,54 @@ description = "h3 header"
 input = "### Minor"
 expected = "[bold dim]Minor[/bold dim]"
 
+# ── Tables (extended) ────────────────────────────────────────────
+
+[[case]]
+description = "table without leading/trailing pipes"
+input = "Item|Price\n---|---\nPizza|40c\nDrink|10c"
+expected = "[bold]Item  │ Price[/bold]\n──────┼──────\nPizza │ 40c  \nDrink │ 10c  "
+
+[[case]]
+description = "first-column-as-header table (separator first)"
+input = "|---|---\n|Height|5' 1\"\n|Weight|105 lb"
+expected = "[bold]Height[/bold] │ 5' 1\" \n[bold]Weight[/bold] │ 105 lb"
+
 # ── Sections ─────────────────────────────────────────────────────
 
 [[case]]
 description = "open section heading"
 input = "[[Section Name]]"
 expected = "[bold cyan]▸ Section Name[/bold cyan]"
+
+[[case]]
+description = "empty title open section"
+input = "[[]]"
+expected = "[bold cyan]▸ [/bold cyan]"
+
+[[case]]
+description = "limited section brace on same line"
+input = "[[Header]] {content}"
+expected = "[bold cyan]▸ Header[/bold cyan]\n  content"
+
+[[case]]
+description = "limited section brace on next line"
+input = "[[Header]]\n{\ncontent\n}"
+expected = "[bold cyan]▸ Header[/bold cyan]\n  content"
+
+[[case]]
+description = "limited section text after brace"
+input = "[[Header]] {first line\nsecond line\n}"
+expected = "[bold cyan]▸ Header[/bold cyan]\n  first line\n  second line"
+
+[[case]]
+description = "limited section close brace mid-line"
+input = "[[Header]] {\nsome text}"
+expected = "[bold cyan]▸ Header[/bold cyan]\n  some text"
+
+[[case]]
+description = "empty title limited section"
+input = "[[]] {content}"
+expected = "[bold cyan]▸ [/bold cyan]\n  content"
 
 # ── Combined formatting ─────────────────────────────────────────
 
