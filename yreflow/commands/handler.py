@@ -341,6 +341,14 @@ class CommandHandler:
             "function": self.handle_describe,
         }
 
+        patterns["mute_travel"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "mute travel", lambda cmd: True),
+                (lambda cmd: cmd.strip() == "unmute travel", lambda cmd: False),
+            ],
+            "function": self.handle_mute_travel,
+        }
+
         patterns["nav"] = {
             "patterns": [
                 (lambda cmd: cmd.strip() == "nav", lambda cmd: ""),
@@ -1007,6 +1015,17 @@ class CommandHandler:
 
     async def handle_settings(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(open_settings=True)
+
+    async def handle_mute_travel(self, mute: bool, cc: ControlledChar) -> CommandResult:
+        player = self.conn.player
+        if not player:
+            return CommandResult(success=False, notification="Not connected.")
+        await self.conn.send(
+            f"call.core.player.{player}.setCharSettings",
+            {"charId": cc.char_id, "muteTravel": mute},
+        )
+        label = "muted" if mute else "unmuted"
+        return CommandResult(notification=f"Travel messages {label}.")
 
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)
