@@ -60,6 +60,14 @@ def subscript_string(
 
 
 
+def _is_table_row(stripped: str) -> bool:
+    """Check if a line looks like a table row (contains | as column delimiter)."""
+    if "|" not in stripped:
+        return False
+    cells = [c.strip() for c in stripped.strip("|").split("|")]
+    return len(cells) >= 2
+
+
 def _format_table(lines: list[str]) -> str:
     """Convert markdown-style table lines into aligned Rich markup."""
     rows: list[list[str]] = []
@@ -82,18 +90,26 @@ def _format_table(lines: list[str]) -> str:
             if j < num_cols:
                 widths[j] = max(widths[j], len(cell))
 
+    # If separator is the first line, there is no header row —
+    # bold the first column of each data row instead.
+    first_col_header = separator_idx == 0
+
     result_lines = []
     for i, row in enumerate(rows):
         parts = []
         for j in range(num_cols):
             cell = row[j] if j < len(row) else ""
             parts.append(cell.ljust(widths[j]))
-        line_text = " │ ".join(parts)
-        if i == 0 and separator_idx is not None:
+        if first_col_header:
+            line_text = " │ ".join([f"[bold]{parts[0]}[/bold]"] + parts[1:])
+            result_lines.append(line_text)
+        elif i == 0 and separator_idx is not None:
             # Header row
+            line_text = " │ ".join(parts)
             result_lines.append(f"[bold]{line_text}[/bold]")
             result_lines.append("─┼─".join("─" * w for w in widths))
         else:
+            line_text = " │ ".join(parts)
             result_lines.append(line_text)
 
     return "\n".join(result_lines)
@@ -151,7 +167,7 @@ def format_message(
     # First pass: extract markdown links before character-level processing
     # so they don't interfere with Rich markup brackets
     links: list[tuple[str, str]] = []
-    url_find = r"\[([^\]]*?)\]\(([^)]*?)\)"
+    url_find = r"\[([^\]]*?)\]\(((?:[^()]*|\([^()]*\))*)\)"
 
     def _replace_link(m):
         idx = len(links)
@@ -195,12 +211,12 @@ def format_message(
         stripped = line.strip()
 
         # Flush table buffer if current line is not a table row
-        if table_buffer and not re.match(r"^\|.*\|", stripped):
+        if table_buffer and not _is_table_row(stripped):
             processed_lines.append(_store_block(_format_table(table_buffer)))
             table_buffer = []
 
-        # Table row: starts and ends with |
-        if re.match(r"^\|.*\|", stripped):
+        # Table row: contains | as column delimiter
+        if _is_table_row(stripped):
             table_buffer.append(stripped)
             i += 1
             continue
@@ -219,28 +235,57 @@ def format_message(
             i += 1
             continue
 
-        # Limited section: [[title]] { ... }
-        limited_m = re.match(r"^\[\[(.+?)\]\]\s*\{", stripped)
-        if limited_m:
-            title = limited_m.group(1)
-            processed_lines.append(_store_block(f"[bold cyan]▸ {title}[/bold cyan]"))
-            # Collect content until closing }
-            i += 1
-            while i < len(raw_lines):
-                if raw_lines[i].strip() == "}":
-                    i += 1
-                    break
-                processed_lines.append(f"  {raw_lines[i]}")
-                i += 1
-            continue
-
-        # Open section: [[title]] alone on a line
-        section_m = re.match(r"^\[\[(.+?)\]\]$", stripped)
+        # Section: [[title]] — limited (with { ... }) or open
+        section_m = re.match(r"^\[\[(.*?)\]\](.*)$", stripped)
         if section_m:
             title = section_m.group(1)
-            processed_lines.append(_store_block(f"[bold cyan]▸ {title}[/bold cyan]"))
-            i += 1
-            continue
+            remainder = section_m.group(2).strip()
+
+            # Determine if this is a limited section (has { ... } body)
+            has_brace = False
+            after_brace = ""
+
+            if remainder.startswith("{"):
+                has_brace = True
+                after_brace = remainder[1:]
+            elif not remainder and i + 1 < len(raw_lines) and raw_lines[i + 1].strip().startswith("{"):
+                has_brace = True
+                i += 1
+                after_brace = raw_lines[i].strip()[1:]
+
+            if has_brace:
+                # Limited section
+                processed_lines.append(_store_block(f"[bold cyan]▸ {title}[/bold cyan]"))
+
+                # Handle content after { (possibly closing } on same line)
+                if "}" in after_brace:
+                    content = after_brace[:after_brace.index("}")]
+                    if content.strip():
+                        processed_lines.append(f"  {content.strip()}")
+                    i += 1
+                    continue
+
+                if after_brace.strip():
+                    processed_lines.append(f"  {after_brace.strip()}")
+
+                # Collect content until closing }
+                i += 1
+                while i < len(raw_lines):
+                    line_content = raw_lines[i]
+                    if "}" in line_content:
+                        before_brace = line_content[:line_content.index("}")]
+                        if before_brace.strip():
+                            processed_lines.append(f"  {before_brace.strip()}")
+                        i += 1
+                        break
+                    processed_lines.append(f"  {line_content}")
+                    i += 1
+                continue
+            else:
+                # Open section
+                processed_lines.append(_store_block(f"[bold cyan]▸ {title}[/bold cyan]"))
+                i += 1
+                continue
 
         processed_lines.append(line)
         i += 1

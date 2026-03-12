@@ -10,6 +10,8 @@ from textual.widgets import Static, Button
 from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 
+from .tabbable_modal import TabbableModal
+
 if TYPE_CHECKING:
     from ...protocol.model_store import ModelStore
     from ...protocol.connection import WolferyConnection
@@ -132,7 +134,7 @@ class PuppetOption(_SelectableOption):
             super().on_key(event)
 
 
-class CharacterSelectScreen(ModalScreen):
+class CharacterSelectScreen(TabbableModal, ModalScreen):
     """Modal screen for selecting a character to awaken."""
 
     DEFAULT_CSS = """

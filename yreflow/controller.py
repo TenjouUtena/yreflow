@@ -6,7 +6,10 @@ Subscribes to EventBus events from the protocol and routes them to UI calls.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING
+
+log = logging.getLogger("yreflow.controller")
 
 from .protocol.events import EventBus
 from .protocol.model_store import ModelStore
@@ -36,7 +39,8 @@ class Controller:
         self._reconnect_delay = 5.0
 
         # Subscribe to protocol events
-        self.event_bus.subscribe(r"^message\.received$", self._on_message)
+        # NOTE: message.received is subscribed in start() so plugins
+        # (which load first) can intercept messages via publish_interceptable.
         self.event_bus.subscribe(r"^notification$", self._on_notification)
         self.event_bus.subscribe(r"^room\.changed$", self._on_room_changed)
         self.event_bus.subscribe(r"^watches\.changed$", self._on_watches_changed)
@@ -66,6 +70,7 @@ class Controller:
 
     async def start(self) -> None:
         await self.plugin_manager.discover_builtin()
+        self.event_bus.subscribe(r"^message\.received$", self._on_message)
         await self.connection.connect()
 
     async def start_with_credentials(self, username: str, password: str) -> None:
@@ -75,6 +80,7 @@ class Controller:
         self.connection.token = token
         self.connection.auth_mode = "token"
         await self.plugin_manager.discover_builtin()
+        self.event_bus.subscribe(r"^message\.received$", self._on_message)
         await self.connection.connect()
 
     async def handle_command(self, command: str, ctrl_id: str) -> CommandResult:
@@ -153,12 +159,18 @@ class Controller:
         await self.ui.display_system_text(f"Could not connect to {realm_name}!")
 
     async def _on_look_result(self, event_name: str, data: dict, **kw) -> None:
+        log.debug("_on_look_result() called, type=%s, name=%s",
+                  data.get("type"), data.get("name"))
         self._active_look_screen = await self.ui.display_look(
             data, on_dismiss=self._on_look_dismissed
         )
+        log.debug("_on_look_result() screen=%s (id=%s)",
+                  self._active_look_screen, id(self._active_look_screen))
 
     async def _on_look_update(self, event_name: str, data: dict, **kw) -> None:
         screen = getattr(self, "_active_look_screen", None)
+        log.debug("_on_look_update() called, screen=%s (id=%s)",
+                  screen, id(screen) if screen else None)
         if screen is not None:
             await screen.update_data(data)
 
@@ -168,6 +180,12 @@ class Controller:
     def _on_look_dismissed(self) -> None:
         self._active_look_screen = None
         self.commands._remove_look_watch()
+        # Tell server to stop looking at the target (look at self instead).
+        ctrl_id = getattr(self.ui, "active_character", None)
+        if ctrl_id:
+            cc = self.connection.get_controlled_char(ctrl_id)
+            if cc:
+                asyncio.create_task(self.connection.stop_look_at(cc))
 
     async def _on_auth_failed(self, event_name: str, error: str, **kw) -> None:
         await self.ui.show_login(error=error)

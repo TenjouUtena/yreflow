@@ -7,6 +7,7 @@ from functools import partial
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import Provider, Hit, Hits
+from textual.screen import ModalScreen
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Header, Footer, Collapsible
 
@@ -123,7 +124,15 @@ class WolferyApp(App):
     ]
 
     async def action_autocomplete(self):
+        # On modal screens, Tab should cycle focus instead of autocomplete.
+        if isinstance(self.screen, ModalScreen):
+            self.screen.focus_next()
+            return
         input_bar = self.query_one("#input-bar", InputBar)
+        # If we're already cycling through completions, just cycle.
+        if input_bar._autocompleting:
+            input_bar.cycle_completion()
+            return
         # Let plugins try to handle autocomplete first.
         if self.controller and self.active_character:
             handled = await self.controller.event_bus.publish_interceptable(
@@ -142,6 +151,7 @@ class WolferyApp(App):
         self.controller = controller
         self.active_character: str | None = None
         self.character_views: dict[str, dict] = {}
+        self._pending_notifications: dict[str, list[str]] = {}
         self.unread_counts: dict[str, int] = {}
         self.urgent_unreads: dict[str, bool] = {}
         self.character_order: list[str] = []
@@ -572,7 +582,10 @@ class WolferyApp(App):
             sender = message["frm"].get("name","") + ' ' + message["frm"].get("surname","")
 
         sender_id = message["frm"].get("id", "")
-        msg_text = format_message(message.get("msg", ""), on_url=self._publish_url, **formatter_settings())
+        if style == "roll":
+            msg_text = message.get("msg", "")  # already Rich-formatted
+        else:
+            msg_text = format_message(message.get("msg", ""), on_url=self._publish_url, **formatter_settings())
         j = message.get("j", {})
         target = message.get("t", {})
         target_first_name = target.get("name", "")
@@ -642,6 +655,10 @@ class WolferyApp(App):
 
     async def notify(self, text: str, character: str | None = None, **kwargs) -> None:
         target = character or self.active_character
+        if target and target not in self.character_views:
+            # Tab not ready yet — buffer for later
+            self._pending_notifications.setdefault(target, []).append(text)
+            return
         if target and target in self.character_views:
             view = self.character_views[target]["main"]
             view.write(f"[bold yellow]>> {text}[/bold yellow]")
@@ -745,6 +762,10 @@ class WolferyApp(App):
         # If this is the first character, make it active
         if self.active_character is None:
             self._switch_to_character(character)
+
+        # Flush any notifications that arrived before the tab existed
+        for text in self._pending_notifications.pop(character, []):
+            await self.notify(text, character=character)
 
     async def remove_character_tab(self, character: str) -> None:
         """Remove a character's views and button after release."""

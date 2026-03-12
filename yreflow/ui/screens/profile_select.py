@@ -10,6 +10,8 @@ from textual.widgets import Static, Button
 from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 
+from .tabbable_modal import TabbableModal
+
 if TYPE_CHECKING:
     from ...protocol.model_store import ModelStore
     from ...protocol.connection import WolferyConnection
@@ -46,7 +48,7 @@ class ProfileOption(Static):
         self.post_message(self.Selected(self.profile_id, self.profile_name))
 
 
-class ProfileSelectScreen(ModalScreen):
+class ProfileSelectScreen(TabbableModal, ModalScreen):
     """Modal screen for selecting a character profile."""
 
     DEFAULT_CSS = """
