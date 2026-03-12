@@ -6,10 +6,13 @@ Singleton Application() replaced with injected connection/store references.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+
+log = logging.getLogger("yreflow.handler")
 
 from .name_resolver import parse_name, NameParseException
 from .room_cmd import match_room_commands
@@ -1241,14 +1244,18 @@ class CommandHandler:
     async def _on_look_result(self, char_id: str) -> None:
         """Called when the look_at response arrives. Publishes look data."""
         data = self._gather_character_data(char_id)
+        log.debug("_on_look_result() publishing look.result for %s", char_id)
         await self.conn.event_bus.publish("look.result", data=data)
+        log.debug("_on_look_result() look.result published, setting up watch")
 
         # Watch for store updates to this character (e.g. desc arriving late)
         self._remove_look_watch()
 
         async def _on_char_update(path, payload):
+            log.debug("_on_char_update() fired, path=%s", path)
             updated = self._gather_character_data(char_id)
             await self.conn.event_bus.publish("look.update", data=updated)
+            log.debug("_on_char_update() look.update published")
 
         self._look_watch_cb = _on_char_update
         self.store.add_watch(rf"core\.char\.{char_id}\.", _on_char_update)

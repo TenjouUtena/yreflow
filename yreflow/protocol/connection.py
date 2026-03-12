@@ -485,7 +485,7 @@ class WolferyConnection:
                     [sender_id], [sender_name], _DIRECTED_PREFIX[style]
                 )
 
-        await self.event_bus.publish(
+        await self.event_bus.publish_interceptable(
             "message.received", message=output, style=style, character=ctrl_id
         )
 

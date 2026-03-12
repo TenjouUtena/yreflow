@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+
 from PIL import Image as PILImage
 from textual.binding import Binding
 from textual.screen import ModalScreen
@@ -14,6 +17,9 @@ from collections.abc import Callable
 from ...formatter import format_message
 from ...config import formatter_settings
 from ...protocol.avatar import get_avatar
+
+
+log = logging.getLogger("yreflow.look_screen")
 
 
 class LookScreen(ModalScreen):
@@ -94,6 +100,8 @@ class LookScreen(ModalScreen):
         self._on_url = on_url
         self._cached_image: PILImage.Image | None = None
         self._cached_image_url: str = ""
+        self._update_lock = asyncio.Lock()
+        self._pending_data: dict | None = None
 
     def compose(self):
         with Vertical(id="look-container"):
@@ -110,15 +118,21 @@ class LookScreen(ModalScreen):
             yield Button("Close", id="close-btn", variant="default")
 
     async def on_mount(self) -> None:
-        body = self.query_one("#look-body", VerticalScroll)
-        if self.data["type"] == "room":
-            await self._mount_room(body)
-        elif self.data["type"] == "character":
-            await self._mount_character(body)
-        elif self.data["type"] == "whois":
-            await self._mount_whois(body)
-        elif self.data["type"] == "rules":
-            await self._mount_rules(body)
+        async with self._update_lock:
+            body = self.query_one("#look-body", VerticalScroll)
+            # If update_data() already populated the body while we waited
+            # for the lock, skip — the content is already there (#74).
+            if len(body.children) > 0:
+                log.debug("on_mount() skipped — body already populated by update_data()")
+                return
+            if self.data["type"] == "room":
+                await self._mount_room(body)
+            elif self.data["type"] == "character":
+                await self._mount_character(body)
+            elif self.data["type"] == "whois":
+                await self._mount_whois(body)
+            elif self.data["type"] == "rules":
+                await self._mount_rules(body)
 
     async def _mount_room(self, body: VerticalScroll) -> None:
         areas = self.data.get("areas", [])
@@ -287,7 +301,31 @@ class LookScreen(ModalScreen):
         await self._mount_tags(body)
 
     async def update_data(self, data: dict) -> None:
-        """Re-render the body with updated character data."""
+        """Re-render the body with updated character data.
+
+        Uses an asyncio.Lock to serialize updates — resclient often
+        fires multiple store-change events in quick succession, which
+        can cause interleaved mount operations and duplicate widgets (#74).
+        If the lock is held, we stash the latest data so only the most
+        recent update runs when the lock is released (coalescing).
+        """
+        if self._update_lock.locked():
+            log.debug("update_data() coalesced — lock held, stashing data")
+            self._pending_data = data
+            return
+
+        async with self._update_lock:
+            self._pending_data = None
+            await self._do_update(data)
+            # Drain any updates that arrived while we held the lock
+            while self._pending_data is not None:
+                log.debug("update_data() draining pending update")
+                deferred = self._pending_data
+                self._pending_data = None
+                await self._do_update(deferred)
+
+    async def _do_update(self, data: dict) -> None:
+        """Actually perform the body re-render."""
         self.data = data
         body = self.query_one("#look-body", VerticalScroll)
         await body.remove_children()

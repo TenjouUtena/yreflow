@@ -124,6 +124,10 @@ class WolferyApp(App):
 
     async def action_autocomplete(self):
         input_bar = self.query_one("#input-bar", InputBar)
+        # If we're already cycling through completions, just cycle.
+        if input_bar._autocompleting:
+            input_bar.cycle_completion()
+            return
         # Let plugins try to handle autocomplete first.
         if self.controller and self.active_character:
             handled = await self.controller.event_bus.publish_interceptable(

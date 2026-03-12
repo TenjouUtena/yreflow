@@ -91,6 +91,15 @@ class InputBar(Input):
         """Enable/disable navigation mode (arrow keys pass through to NavPanel)."""
         self._nav_mode = enabled
 
+    def cycle_completion(self) -> None:
+        """Cycle to the next completion candidate."""
+        if not self._autocompleting or not self._autocomplete_history:
+            return
+        self._autocomplete_history.rotate(-1)
+        self.value = self.value[:self._autocomplete_to + 1]
+        self.value += self._autocomplete_history[0][self._autocomplete_length:]
+        self.cursor_position = len(self.value)
+
     async def autocomplete(self) -> None:
         ## If the input bar isn't focused, then focus it.
         if not self.has_focus:
@@ -98,30 +107,29 @@ class InputBar(Input):
             return
 
         if self._autocompleting:
-            # Cycle to next match, revert to the pre-completion text first.
-            self._autocomplete_history.rotate(-1)
-            self.value = self.value[:self._autocomplete_to+1]
-        else:
-            lookup = self.value.split(' ')[-1]
-            if not lookup:
-                return
-            if lookup[0] in '@':
-                lookup = lookup[1:]
+            self.cycle_completion()
+            return
 
-            # If there's nothing to autocomplete, just stop.
-            if not lookup:
-                return
+        lookup = self.value.split(' ')[-1]
+        if not lookup:
+            return
+        if lookup[0] in '@':
+            lookup = lookup[1:]
 
-            self._autocomplete_to = self.cursor_position-1
-            self._autocomplete_length = len(lookup)
+        # If there's nothing to autocomplete, just stop.
+        if not lookup:
+            return
 
-            try:
-                results = parse_name(self.app.controller.store, lookup, 'fullname', True, True)
-            except NameParseException:
-                return
+        self._autocomplete_to = self.cursor_position-1
+        self._autocomplete_length = len(lookup)
 
-            self._autocomplete_history = deque(results)
-            self._autocompleting = True
+        try:
+            results = parse_name(self.app.controller.store, lookup, 'fullname', True, True)
+        except NameParseException:
+            return
+
+        self._autocomplete_history = deque(results)
+        self._autocompleting = True
 
         # Append the untyped remainder of the matched name.
         self.value += self._autocomplete_history[0][self._autocomplete_length:]
@@ -148,7 +156,9 @@ class InputBar(Input):
         if event.key == 'backspace' and self._autocompleting:
             self.value = self.value[0:self._autocomplete_to+2]
             self.cursor_position = len(self.value)
-        self._autocompleting = False
+        # Don't reset autocomplete state on Tab — it's used for cycling.
+        if event.key != "tab":
+            self._autocompleting = False
 
         # In nav mode, let directional keys bubble up to NavPanel
         if self._nav_mode and event.key in _NAV_PASSTHROUGH_KEYS:

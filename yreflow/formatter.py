@@ -220,7 +220,7 @@ def format_message(
             continue
 
         # Limited section: [[title]] { ... }
-        limited_m = re.match(r"^\[\[(.+?)\]\]\s*\{", stripped)
+        limited_m = re.match(r"^\[\[(.*?)\]\]\s*\{", stripped)
         if limited_m:
             title = limited_m.group(1)
             processed_lines.append(_store_block(f"[bold cyan]▸ {title}[/bold cyan]"))

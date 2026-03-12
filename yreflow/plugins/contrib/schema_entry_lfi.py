@@ -1,12 +1,10 @@
 """Schema-driven autocomplete plugin for Last Flame Inn.
 
 Intercepts Tab, matches the current input against a pattern schema,
-and sends a ``__complete`` room command to Wolfery when the cursor is
-at a completable slot.  Results come back as a describe message whose
-body is JSON containing the matches.
+and sends a completion request via the ``muckproxy`` room command.
+Results come back as a describe message containing a JSON array of strings.
 """
 
-import base64
 import json
 import logging
 import re
@@ -58,20 +56,14 @@ _SCHEMA_ = """
 }
 """
 
-# Example payload for __complete
-# {
-#   "provider": "container_any",
-#   "prefix": "wo",
-#   "captures": {
-#     "item": "coffee cup"
-#   }
-# }
-
 # Regex to find {name:provider} slots in a pattern string.
 _SLOT_RE = re.compile(r"\{(\w+):(\w+)\}")
 
-# Marker that identifies a describe message as a __complete response.
-_COMPLETE_MARKER = "__complete_response"
+# Regex to find a JSON array of strings in the describe response.
+_JSON_ARRAY_RE = re.compile(r'\[(?:\s*"[^"]*"\s*,?\s*)*\]')
+
+# Room command pattern prefixes we search for to find the muckproxy cmd ID.
+_MUCKPROXY_NAMES = ("muckproxy meta complete", )
 
 
 def _parse_pattern(pattern: str) -> list[dict]:
@@ -112,14 +104,12 @@ def match_input(parsed_patterns: list[list[dict]], user_input: str) -> dict | No
     if not user_input:
         return None
 
-    # Try each pattern, prefer longer (more specific) matches.
     best: dict | None = None
     best_score = -1
 
     for tokens in parsed_patterns:
         result = _try_match(tokens, user_input)
         if result is not None:
-            # Score by how many tokens were consumed (more = better).
             score = len(result.get("captures", {})) + len(tokens)
             if score > best_score:
                 best = result
@@ -131,27 +121,23 @@ def match_input(parsed_patterns: list[list[dict]], user_input: str) -> dict | No
 def _try_match(tokens: list[dict], user_input: str) -> dict | None:
     """Try to match a single parsed pattern against user input.
 
-    We walk the tokens and the input simultaneously. Literal tokens must
-    match exactly.  Slot tokens consume words up to the next literal
-    delimiter (or the end of input).
-
-    If the input ends mid-slot (i.e., the slot is the last thing and the
-    user has typed a partial word), that's our completion point.
+    Walks tokens and input simultaneously. Literal tokens must match exactly.
+    Slot tokens consume words up to the next literal delimiter (or end of input).
+    If the input ends mid-slot, that's our completion point.
     """
     words = user_input.split()
-    wi = 0  # word index into user input
+    wi = 0
     captures: dict[str, str] = {}
 
     for ti, token in enumerate(tokens):
         if token["type"] == "literal":
             if wi >= len(words):
-                return None  # input too short for this literal
+                return None
             if words[wi].lower() != token["text"].lower():
-                return None  # mismatch
+                return None
             wi += 1
 
         elif token["type"] == "slot":
-            # Find the next literal token to know where this slot ends.
             next_literal = None
             for ahead in tokens[ti + 1:]:
                 if ahead["type"] == "literal":
@@ -159,8 +145,6 @@ def _try_match(tokens: list[dict], user_input: str) -> dict | None:
                     break
 
             if next_literal is None:
-                # This slot runs to the end of the input.
-                # Everything remaining is either a captured value or a prefix.
                 remaining = words[wi:]
                 prefix = " ".join(remaining) if remaining else ""
                 return {
@@ -170,7 +154,6 @@ def _try_match(tokens: list[dict], user_input: str) -> dict | None:
                     "name": token["name"],
                 }
             else:
-                # Find the delimiter in the remaining words.
                 delim_idx = None
                 for i in range(wi, len(words)):
                     if words[i].lower() == next_literal.lower():
@@ -178,8 +161,6 @@ def _try_match(tokens: list[dict], user_input: str) -> dict | None:
                         break
 
                 if delim_idx is None:
-                    # Delimiter not found — user hasn't typed it yet.
-                    # The slot value so far is everything remaining.
                     remaining = words[wi:]
                     prefix = " ".join(remaining) if remaining else ""
                     return {
@@ -189,19 +170,41 @@ def _try_match(tokens: list[dict], user_input: str) -> dict | None:
                         "name": token["name"],
                     }
                 else:
-                    # Capture the slot value (words between current pos and delimiter).
                     slot_words = words[wi:delim_idx]
                     if not slot_words:
-                        return None  # empty slot value
+                        return None
                     captures[token["name"]] = " ".join(slot_words)
                     wi = delim_idx
-                    # Don't advance past delimiter — the next literal token will consume it.
 
-    # If we consumed all tokens but there are leftover words, no match.
     if wi < len(words):
         return None
 
-    return None  # Fully matched pattern with no pending slot — nothing to complete.
+    return None  # Fully matched, nothing to complete.
+
+
+def _find_muckproxy_cmd_id(store, char_path: str) -> str | None:
+    """Search room commands for the muckproxy completion command."""
+    room_rid = store.get_room_rid(char_path)
+    if not room_rid:
+        return None
+
+    cmd_refs = store.get_room_cmds(room_rid)
+    if not cmd_refs:
+        return None
+
+    for ref in cmd_refs:
+        try:
+            cmd_model = store.get(ref["rid"])
+        except KeyError:
+            continue
+        cmd_data = cmd_model.get("cmd", {}).get("data", {})
+        pattern = (cmd_data.get("pattern") or "").lower()
+        for name in _MUCKPROXY_NAMES:
+            if pattern.startswith(name):
+                log.info(f"Found COmmand: {name} {pattern} {cmd_data}")
+                return cmd_model.get("id", ref["rid"].rsplit(".", 1)[-1])
+
+    return None
 
 
 class SchemaParser(Plugin):
@@ -229,7 +232,6 @@ class SchemaParser(Plugin):
         if not input or not self._parsed_patterns:
             return False
 
-        # Only consider input up to the cursor position.
         text = input[:cursor] if cursor > 0 else input
 
         result = match_input(self._parsed_patterns, text)
@@ -241,62 +243,71 @@ class SchemaParser(Plugin):
         captures = result["captures"]
 
         if not prefix:
-            # No partial word typed yet — nothing to complete.
             return False
 
-        # Build the __complete payload.
-        payload = {
-            "provider": provider,
-            "prefix": prefix,
-            "captures": captures,
-        }
-        encoded = base64.b64encode(json.dumps(payload).encode()).decode()
-
-        # Get the ctrl_path for the active character.
         cc = self.connection.get_controlled_char(ctrl_id)
         if cc is None:
             return False
 
+        # Find the muckproxy room command ID.
+        cmd_id = _find_muckproxy_cmd_id(self.store, cc.char_path)
+        if cmd_id is None:
+            log.debug("No muckproxy room command found in current room")
+            return False
+
+        # Build the completion payload as single-line JSON (no encoding).
+        payload_json = json.dumps({
+            "version": 1,
+            "provider": provider,
+            "prefix": prefix,
+            "captures": captures,
+        }, separators=(",", ":"))
+
         self._pending_complete = True
         self._pending_prefix_len = len(prefix)
 
-        log.debug("Sending __complete: %s", payload)
+        log.debug("Sending muckproxy complete: cmdId=%s payload=%s", cmd_id, payload_json)
         await self.connection.send(
             f"call.{cc.ctrl_path}.execRoomCmd",
-            {"cmdId": "__complete", "values": {"data": encoded}},
+            {"cmdId": cmd_id, "values": {"value": {"value": payload_json}}},
         )
         return True
 
     async def on_message(self, message: dict, style: str, character: str, **kw):
-        """Intercept describe messages that are __complete responses."""
+        """Intercept completion response messages.
+
+        Returns True to suppress display when the message is a completion
+        result (message.received uses publish_interceptable).
+        """
         if not self._pending_complete:
-            return
-        if style != "describe":
-            return
+            return False
+        if style not in ("describe", "info"):
+            return False
 
         msg_text = message.get("msg", "")
-        if _COMPLETE_MARKER not in msg_text:
-            return
 
-        # This is our response. Parse it.
+        # Look for a JSON array of strings in the response.
+        m = _JSON_ARRAY_RE.search(msg_text)
+        if m is None:
+            return False
+
         self._pending_complete = False
         try:
-            # Extract JSON from the message. The marker might be a wrapper.
-            # Try to find JSON in the message text.
-            json_start = msg_text.index("{")
-            json_end = msg_text.rindex("}") + 1
-            data = json.loads(msg_text[json_start:json_end])
-            results = data.get("matches", [])
-        except (ValueError, json.JSONDecodeError):
-            log.warning("Failed to parse __complete response: %s", msg_text)
-            return
+            results = json.loads(m.group())
+        except json.JSONDecodeError:
+            log.warning("Failed to parse completion response: %s", m.group())
+            return True  # Still suppress the garbled response
 
-        if results:
-            await self.event_bus.publish(
-                "autocomplete.results",
-                results=results,
-                prefix_len=self._pending_prefix_len,
-            )
+        if not isinstance(results, list) or not results:
+            return True  # Suppress empty results too
+
+        log.debug("Got %d completion results", len(results))
+        await self.event_bus.publish(
+            "autocomplete.results",
+            results=results,
+            prefix_len=self._pending_prefix_len,
+        )
+        return True  # Suppress — don't display the raw JSON in chat
 
 
 # PluginManager looks for this attribute.

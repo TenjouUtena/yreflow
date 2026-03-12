@@ -16,6 +16,15 @@ wheels = [
 ]
 
 [[package]]
+name = "base91"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/19/b0f1df635561be1bcd74c652a2e611ebf0a9d5f5f10be9d8421733e2cb04/base91-1.0.1.tar.gz", hash = "sha256:5b284a2ba3c97be1eb9473f3af94a9bf141d61005d836e75e645d2798da58799", size = 2331, upload-time = "2016-01-15T17:18:14.574Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/cf/4c92fa04c1703c2fb77ac9b7375a722c98279dd6eb0959479c2686687c20/base91-1.0.1-py3-none-any.whl", hash = "sha256:a1e605d0e762661eee73943dc33becf807890214f497896153b1851a56b357bf", size = 3419, upload-time = "2016-01-15T17:18:35.199Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.2.25"
 source = { registry = "https://pypi.org/simple" }
@@ -632,6 +641,7 @@ name = "yreflow"
 version = "0.2.1"
 source = { editable = "." }
 dependencies = [
+    { name = "base91" },
     { name = "httpx" },
     { name = "pillow" },
     { name = "pyspellchecker" },
@@ -659,6 +669,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "base91", specifier = ">=1.0.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pillow", specifier = ">=12.1.1" },
     { name = "pyenchant", marker = "extra == 'spellcheck-enchant'", specifier = ">=3.2" },
