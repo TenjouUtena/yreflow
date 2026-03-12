@@ -146,6 +146,7 @@ class WolferyApp(App):
         self.controller = controller
         self.active_character: str | None = None
         self.character_views: dict[str, dict] = {}
+        self._pending_notifications: dict[str, list[str]] = {}
         self.unread_counts: dict[str, int] = {}
         self.urgent_unreads: dict[str, bool] = {}
         self.character_order: list[str] = []
@@ -649,6 +650,10 @@ class WolferyApp(App):
 
     async def notify(self, text: str, character: str | None = None, **kwargs) -> None:
         target = character or self.active_character
+        if target and target not in self.character_views:
+            # Tab not ready yet — buffer for later
+            self._pending_notifications.setdefault(target, []).append(text)
+            return
         if target and target in self.character_views:
             view = self.character_views[target]["main"]
             view.write(f"[bold yellow]>> {text}[/bold yellow]")
@@ -752,6 +757,10 @@ class WolferyApp(App):
         # If this is the first character, make it active
         if self.active_character is None:
             self._switch_to_character(character)
+
+        # Flush any notifications that arrived before the tab existed
+        for text in self._pending_notifications.pop(character, []):
+            await self.notify(text, character=character)
 
     async def remove_character_tab(self, character: str) -> None:
         """Remove a character's views and button after release."""
