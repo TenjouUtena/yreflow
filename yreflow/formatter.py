@@ -167,7 +167,7 @@ def format_message(
     # First pass: extract markdown links before character-level processing
     # so they don't interfere with Rich markup brackets
     links: list[tuple[str, str]] = []
-    url_find = r"\[([^\]]*?)\]\(([^)]*?)\)"
+    url_find = r"\[([^\]]*?)\]\(((?:[^()]*|\([^()]*\))*)\)"
 
     def _replace_link(m):
         idx = len(links)
