@@ -71,6 +71,7 @@ class WolferyCommands(Provider):
 
 _UNIMPORTANT_STYLES = {"sleep", "leave", "arrive", "travel", "action", "wakeup"}
 _TRAVEL_STYLES = {"leave", "arrive", "travel", "wakeup", "sleep"}
+_OOC_STYLES = {"ooc"}
 _CONSOLE_ID = "__console__"
 
 
@@ -560,6 +561,18 @@ class WolferyApp(App):
         except (KeyError, AttributeError):
             return True
 
+    def _get_mute_ooc(self, character: str) -> bool:
+        """Check the muteOoc setting for a character. Defaults to False."""
+        if not self.controller:
+            return False
+        store = self.controller.store
+        cc = self.controller.connection.get_controlled_char(character)
+        char_id = cc.char_id if cc else character
+        try:
+            return bool(store.get(f"core.char.{char_id}.settings.muteOoc"))
+        except (KeyError, AttributeError):
+            return False
+
     # --- Focus color ---
 
     def _get_focus_color(self, sender_id: str, character: str) -> str | None:
@@ -588,12 +601,15 @@ class WolferyApp(App):
 
         views = self.character_views[character]
         mute_travel = self._get_mute_travel(character)
+        mute_ooc = self._get_mute_ooc(character)
         if style in self.unimportant_styles:
             # If muteTravel is off, travel messages go to the main view
             if not mute_travel and style in _TRAVEL_STYLES:
                 view = views["main"]
             else:
                 view = views["unimportant"]
+        elif mute_ooc and style in _OOC_STYLES:
+            view = views["unimportant"]
         else:
             view = views["main"]
 
@@ -632,8 +648,9 @@ class WolferyApp(App):
         view.write(f"{line}")
 
         # Unread tracking for non-active characters
-        is_muted = style in self.unimportant_styles and not (
-            not mute_travel and style in _TRAVEL_STYLES
+        is_muted = (
+            (style in self.unimportant_styles and not (not mute_travel and style in _TRAVEL_STYLES))
+            or (mute_ooc and style in _OOC_STYLES)
         )
         if character != self.active_character and not is_muted:
             self.unread_counts[character] = self.unread_counts.get(character, 0) + 1
