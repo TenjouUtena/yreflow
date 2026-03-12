@@ -180,6 +180,12 @@ class Controller:
     def _on_look_dismissed(self) -> None:
         self._active_look_screen = None
         self.commands._remove_look_watch()
+        # Tell server to stop looking at the target (look at self instead).
+        ctrl_id = getattr(self.ui, "active_character", None)
+        if ctrl_id:
+            cc = self.connection.get_controlled_char(ctrl_id)
+            if cc:
+                asyncio.create_task(self.connection.stop_look_at(cc))
 
     async def _on_auth_failed(self, event_name: str, error: str, **kw) -> None:
         await self.ui.show_login(error=error)
