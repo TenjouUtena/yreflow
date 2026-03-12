@@ -7,6 +7,7 @@ from functools import partial
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.command import Provider, Hit, Hits
+from textual.screen import ModalScreen
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Header, Footer, Collapsible
 
@@ -123,6 +124,10 @@ class WolferyApp(App):
     ]
 
     async def action_autocomplete(self):
+        # On modal screens, Tab should cycle focus instead of autocomplete.
+        if isinstance(self.screen, ModalScreen):
+            self.screen.focus_next()
+            return
         input_bar = self.query_one("#input-bar", InputBar)
         # If we're already cycling through completions, just cycle.
         if input_bar._autocompleting:

@@ -2,6 +2,7 @@
 
 from collections import deque
 
+from textual.binding import Binding
 from textual.events import Key
 from textual.message import Message
 from textual.widgets import Input
@@ -36,6 +37,10 @@ class InputBar(Input):
         border: solid $accent;
     }
     """
+
+    BINDINGS = [
+        Binding("tab", "autocomplete", "Fire Autocomplete", priority=True)
+    ]
 
     class RecallDirected(Message):
         """Posted when the user presses ! to recall a directed message contact."""

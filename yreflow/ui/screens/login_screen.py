@@ -7,8 +7,10 @@ from textual.screen import ModalScreen
 from textual.widgets import Static, Button, Input
 from textual.containers import Vertical
 
+from .tabbable_modal import TabbableModal
 
-class LoginScreen(ModalScreen[tuple[str, str] | None]):
+
+class LoginScreen(TabbableModal, ModalScreen[tuple[str, str] | None]):
     """Modal screen for username/password login."""
 
     DEFAULT_CSS = """

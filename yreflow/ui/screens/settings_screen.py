@@ -9,6 +9,7 @@ from textual.containers import Vertical, Horizontal, VerticalScroll
 
 from ...config import load_config, save_preference
 from ...constants import NAMED_COLORS
+from .tabbable_modal import TabbableModal
 
 
 class _SettingRow(Horizontal):
@@ -88,7 +89,7 @@ _STYLE_OPTIONS = [("Unicode", "unicode"), ("Highlight", "highlight")]
 _COLOR_OPTIONS = [(name.capitalize(), name) for name in sorted(NAMED_COLORS)]
 
 
-class SettingsScreen(ModalScreen[None]):
+class SettingsScreen(TabbableModal, ModalScreen[None]):
     """Modal settings screen with toggle switches."""
 
     DEFAULT_CSS = """
