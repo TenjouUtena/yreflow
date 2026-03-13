@@ -301,15 +301,16 @@ def resolve_teleport_nodes(
 
     # Global nodes
     try:
-        nodes = store.get("core.node")
-        for node_key in nodes:
-            node_data = nodes[node_key]
-            if not isinstance(node_data, dict):
+        global_refs = store.get("core.nodes._value")
+        for ref in global_refs:
+            try:
+                node_data = store.get(ref["rid"])
+                key = node_data.get("key", "")
+                if key and key not in seen and _matches_prefix(key, prefix):
+                    results.append(key)
+                    seen.add(key)
+            except (KeyError, TypeError):
                 continue
-            key = node_data.get("key", "")
-            if key and key not in seen and _matches_prefix(key, prefix):
-                results.append(key)
-                seen.add(key)
     except KeyError:
         pass
 

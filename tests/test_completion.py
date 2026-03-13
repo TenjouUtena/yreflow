@@ -440,6 +440,9 @@ async def teleport_store():
     # Global nodes
     await store.set("core.node.global01", {"id": "global01", "key": "haven"})
     await store.set("core.node.global02", {"id": "global02", "key": "hub"})
+    await store.set("core.nodes", {
+        "_value": [{"rid": "core.node.global01"}, {"rid": "core.node.global02"}],
+    })
 
     return store
 
@@ -470,10 +473,14 @@ class TestResolveTeleportNodes:
     def test_deduplication(self, teleport_store):
         """If a key appears in both char and global, only list once."""
         import asyncio
+        loop = asyncio.get_event_loop()
         # Add "home" as a global node too
-        asyncio.get_event_loop().run_until_complete(
+        loop.run_until_complete(
             teleport_store.set("core.node.global03", {"id": "global03", "key": "home"})
         )
+        # Add it to the global nodes collection
+        cur = teleport_store.get("core.nodes._value")
+        cur.append({"rid": "core.node.global03"})
         results = resolve_teleport_nodes(teleport_store, "ho", "core.char.char01")
         assert results.count("home") == 1
 

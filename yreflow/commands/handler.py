@@ -568,12 +568,15 @@ class CommandHandler:
         # Fall back to global nodes
         if not node_id:
             try:
-                nodes = self.store.get("core.node")
-                for node_key in nodes:
-                    node_data = nodes[node_key]
-                    if "key" in node_data and node_data["key"].lower() == location_key:
-                        node_id = node_data["id"]
-                        break
+                global_refs = self.store.get("core.nodes._value")
+                for ref in global_refs:
+                    try:
+                        node_data = self.store.get(ref["rid"])
+                        if "key" in node_data and node_data["key"].lower() == location_key:
+                            node_id = node_data["id"]
+                            break
+                    except (KeyError, TypeError):
+                        continue
             except KeyError:
                 pass
 
