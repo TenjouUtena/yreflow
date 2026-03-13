@@ -47,7 +47,7 @@ class WolferyCommands(Provider):
     """Command palette entries for yreflow actions."""
 
     COMMANDS = [
-        ("Toggle activity panel", "toggle_unimportant", "Show/hide the activity section (F3)"),
+        ("Toggle muted panel", "toggle_unimportant", "Show/hide the muted section (F3)"),
         ("Recent URLs", "show_urls", "Show recently captured URLs (Ctrl+U)"),
         ("Toggle sidebar mode", "toggle_watch_mode", "Switch sidebar between compact and full (Ctrl+W)"),
         ("Next character", "next_character", "Switch to the next character tab (Ctrl+N)"),
@@ -70,6 +70,8 @@ class WolferyCommands(Provider):
 
 
 _UNIMPORTANT_STYLES = {"sleep", "leave", "arrive", "travel", "action", "wakeup"}
+_TRAVEL_STYLES = {"leave", "arrive", "travel", "wakeup", "sleep"}
+_OOC_STYLES = {"ooc"}
 _CONSOLE_ID = "__console__"
 
 
@@ -112,7 +114,7 @@ class WolferyApp(App):
     BINDINGS = [
         Binding("ctrl+c", "quit", "Quit", priority=True),
         Binding("ctrl+u", "show_urls", "URLs", priority=True),
-        Binding("f3", "toggle_unimportant", "Toggle activity", priority=True),
+        Binding("f3", "toggle_unimportant", "Toggle muted", priority=True),
         Binding("ctrl+w", "toggle_watch_mode", "Sidebar: compact/full", priority=True),
         Binding("ctrl+p", "prev_character", "Prev char", priority=True),
         Binding("ctrl+n", "next_character", "Next char", priority=True),
@@ -545,6 +547,32 @@ class WolferyApp(App):
         input_bar = self.query_one("#input-bar", InputBar)
         input_bar.update_spellcheck_words(words)
 
+    # --- Character settings helpers ---
+
+    def _get_mute_travel(self, character: str) -> bool:
+        """Check the muteTravel setting for a character. Defaults to True."""
+        if not self.controller:
+            return True
+        store = self.controller.store
+        cc = self.controller.connection.get_controlled_char(character)
+        char_id = cc.char_id if cc else character
+        try:
+            return bool(store.get(f"core.char.{char_id}.settings.muteTravel"))
+        except (KeyError, AttributeError):
+            return True
+
+    def _get_mute_ooc(self, character: str) -> bool:
+        """Check the muteOoc setting for a character. Defaults to False."""
+        if not self.controller:
+            return False
+        store = self.controller.store
+        cc = self.controller.connection.get_controlled_char(character)
+        char_id = cc.char_id if cc else character
+        try:
+            return bool(store.get(f"core.char.{char_id}.settings.muteOoc"))
+        except (KeyError, AttributeError):
+            return False
+
     # --- Focus color ---
 
     def _get_focus_color(self, sender_id: str, character: str) -> str | None:
@@ -572,7 +600,15 @@ class WolferyApp(App):
             return
 
         views = self.character_views[character]
+        mute_travel = self._get_mute_travel(character)
+        mute_ooc = self._get_mute_ooc(character)
         if style in self.unimportant_styles:
+            # If muteTravel is off, travel messages go to the main view
+            if not mute_travel and style in _TRAVEL_STYLES:
+                view = views["main"]
+            else:
+                view = views["unimportant"]
+        elif mute_ooc and style in _OOC_STYLES:
             view = views["unimportant"]
         else:
             view = views["main"]
@@ -612,7 +648,11 @@ class WolferyApp(App):
         view.write(f"{line}")
 
         # Unread tracking for non-active characters
-        if character != self.active_character and style not in self.unimportant_styles:
+        is_muted = (
+            (style in self.unimportant_styles and not (not mute_travel and style in _TRAVEL_STYLES))
+            or (mute_ooc and style in _OOC_STYLES)
+        )
+        if character != self.active_character and not is_muted:
             self.unread_counts[character] = self.unread_counts.get(character, 0) + 1
             if style in ("whisper", "message", "address"):
                 self.urgent_unreads[character] = True
@@ -724,7 +764,7 @@ class WolferyApp(App):
         )
         collapsible = Collapsible(
             unimportant_view,
-            title="Activity",
+            title="Muted",
             id=f"collapse-{character}",
             collapsed=True,
         )

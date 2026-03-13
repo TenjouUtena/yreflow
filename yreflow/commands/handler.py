@@ -159,6 +159,7 @@ class CommandHandler:
         patterns["teleport"] = {
             "patterns": [
                 (lambda cmd: cmd.startswith("teleport "), lambda cmd: cmd[9:]),
+                (lambda cmd: cmd.startswith("tport "), lambda cmd: cmd[6:]),
                 (lambda cmd: cmd.startswith("t "), lambda cmd: cmd[2:]),
             ],
             "function": self.handle_teleport,
@@ -338,6 +339,22 @@ class CommandHandler:
                 (lambda cmd: cmd.startswith("spoof "), lambda cmd: cmd[6:]),
             ],
             "function": self.handle_describe,
+        }
+
+        patterns["mute_travel"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "mute travel", lambda cmd: True),
+                (lambda cmd: cmd.strip() == "unmute travel", lambda cmd: False),
+            ],
+            "function": self.handle_mute_travel,
+        }
+
+        patterns["mute_ooc"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "mute ooc", lambda cmd: True),
+                (lambda cmd: cmd.strip() == "unmute ooc", lambda cmd: False),
+            ],
+            "function": self.handle_mute_ooc,
         }
 
         patterns["nav"] = {
@@ -551,12 +568,15 @@ class CommandHandler:
         # Fall back to global nodes
         if not node_id:
             try:
-                nodes = self.store.get("core.node")
-                for node_key in nodes:
-                    node_data = nodes[node_key]
-                    if "key" in node_data and node_data["key"].lower() == location_key:
-                        node_id = node_data["id"]
-                        break
+                global_refs = self.store.get("core.nodes._value")
+                for ref in global_refs:
+                    try:
+                        node_data = self.store.get(ref["rid"])
+                        if "key" in node_data and node_data["key"].lower() == location_key:
+                            node_id = node_data["id"]
+                            break
+                    except (KeyError, TypeError):
+                        continue
             except KeyError:
                 pass
 
@@ -1006,6 +1026,28 @@ class CommandHandler:
 
     async def handle_settings(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(open_settings=True)
+
+    async def handle_mute_travel(self, mute: bool, cc: ControlledChar) -> CommandResult:
+        player = self.conn.player
+        if not player:
+            return CommandResult(success=False, notification="Not connected.")
+        await self.conn.send(
+            f"call.core.player.{player}.setCharSettings",
+            {"charId": cc.char_id, "muteTravel": mute},
+        )
+        label = "muted" if mute else "unmuted"
+        return CommandResult(notification=f"Travel messages {label}.")
+
+    async def handle_mute_ooc(self, mute: bool, cc: ControlledChar) -> CommandResult:
+        player = self.conn.player
+        if not player:
+            return CommandResult(success=False, notification="Not connected.")
+        await self.conn.send(
+            f"call.core.player.{player}.setCharSettings",
+            {"charId": cc.char_id, "muteOoc": mute},
+        )
+        label = "muted" if mute else "unmuted"
+        return CommandResult(notification=f"OOC messages {label}.")
 
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)

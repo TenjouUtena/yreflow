@@ -9,7 +9,9 @@ from textual.widgets import Input
 
 from ..highlighters import CompositeHighlighter, MarkupPreviewHighlighter, SpellCheckHighlighter
 
-from ...commands.name_resolver import NameParseException, parse_name
+from ...commands.completion import (
+    detect_completion_context, resolve_names, resolve_exits, resolve_teleport_nodes, CompletionType,
+)
 
 # Keys that should pass through to app-level bindings even when input is focused.
 _PASSTHROUGH_KEYS = {
@@ -115,24 +117,31 @@ class InputBar(Input):
             self.cycle_completion()
             return
 
-        lookup = self.value.split(' ')[-1]
-        if not lookup:
-            return
-        if lookup[0] in '@':
-            lookup = lookup[1:]
-
-        # If there's nothing to autocomplete, just stop.
-        if not lookup:
+        ctx = detect_completion_context(self.value)
+        if ctx.completion_type == CompletionType.NONE or not ctx.prefix:
             return
 
-        self._autocomplete_to = self.cursor_position-1
-        self._autocomplete_length = len(lookup)
-
-        try:
-            results = parse_name(self.app.controller.store, lookup, 'fullname', True, True)
-        except NameParseException:
+        controller = self.app.controller
+        if not controller:
             return
 
+        char_path = self.app._resolve_char_path(self.app.active_character) if self.app.active_character else None
+        player = controller.connection.player
+
+        if ctx.completion_type == CompletionType.EXITS:
+            results = resolve_exits(controller.store, ctx.prefix, char_path)
+        elif ctx.completion_type == CompletionType.TELEPORT_NODES:
+            results = resolve_teleport_nodes(controller.store, ctx.prefix, char_path)
+        else:
+            results = resolve_names(
+                controller.store, ctx.prefix, ctx.completion_type,
+                char_path, player, ctx.prose,
+            )
+        if not results:
+            return
+
+        self._autocomplete_to = self.cursor_position - 1
+        self._autocomplete_length = len(ctx.prefix)
         self._autocomplete_history = deque(results)
         self._autocompleting = True
 
