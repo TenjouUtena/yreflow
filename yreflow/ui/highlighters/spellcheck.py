@@ -21,16 +21,31 @@ from rich.text import Text
 _WORD_RE = re.compile(r"[a-zA-Z'\u2019]+")
 
 # Command prefixes to skip past before spellchecking.
-# Matches: say, ooc, pose, go, teleport, home, sweep, status, release,
-# focus, unfocus, summon, join, lead, follow, profile, morph, look, laston,
-# wa, wh, w, p, m, l, t  plus single-char prefixes : " > @
+# Matches all character and console commands that take arguments,
+# plus single-char prefixes : " > @
 _CMD_PREFIX_RE = re.compile(
     r"^(?:"
-    r"(?:say|ooc|pose|go|teleport|home|sweep|status|release|"
-    r"focus|unfocus|summon|join|lead|follow|profile|morph|look|lookup|laston|wa|wh?|[pmlt])\s"
+    r"(?:say|ooc|pose|go|teleport|tport|home|sweep|status|release|"
+    r"focus|unfocus|summon|join|lead|follow|profile|morph|look|lookup|laston|"
+    r"address|to|describe|desc|spoof|whois|wi|watch|unwatch|mail|roll|lfrp|"
+    r"lookupname|create|realm|"
+    r"(?:un)?mute\s(?:travel|ooc)|stop\s(?:follow|lead|lfrp)|area\srules|"
+    r"wa|wh?|[pmlt])\s"
     r"|[:\"\u201c\u201d>@]"
     r")"
 )
+
+# Standalone command words that should never be flagged as misspelled.
+# These are commands typed without arguments (e.g. "nav", "lfrp", "quit").
+_COMMAND_WORDS = frozenset({
+    "say", "ooc", "pose", "go", "teleport", "tport", "home", "sweep",
+    "status", "release", "quit", "sleep", "focus", "unfocus", "summon",
+    "join", "lead", "follow", "profile", "morph", "look", "lookup",
+    "laston", "wa", "whereat", "whois", "wi", "address", "describe",
+    "desc", "spoof", "watch", "unwatch", "mail", "roll", "lfrp",
+    "nav", "settings", "lookupname", "create", "realm", "help",
+    "mute", "unmute",
+})
 
 _MISSPELLED_STYLE = "underline red"
 
@@ -189,9 +204,9 @@ class SpellCheckHighlighter(Highlighter):
         if not word_spans:
             return []
 
-        # Batch check all words at once
-        words_to_check = [w for w, _, _ in word_spans]
-        misspelled = self._checker.unknown(words_to_check)
+        # Batch check all words at once, excluding known command words
+        words_to_check = [w for w, _, _ in word_spans if w not in _COMMAND_WORDS]
+        misspelled = self._checker.unknown(words_to_check) if words_to_check else set()
 
         return [(s, e) for w, s, e in word_spans if w in misspelled]
 
