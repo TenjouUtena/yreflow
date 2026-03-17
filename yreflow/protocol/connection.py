@@ -41,6 +41,7 @@ from .model_store import ModelStore
 from .events import EventBus
 from .controlled_char import ControlledChar
 from .realm import Realm, DEFAULT_REALM_KEY
+from ..config import load_last_seen, save_last_seen
 
 
 class WolferyConnection:
@@ -71,6 +72,7 @@ class WolferyConnection:
         self.subscribe_watches = False
         self.directed_contacts: list[DirectedContact] = []
         self.ctrl_chars: dict[str, ControlledChar] = {}
+        self.last_seen: dict[str, int] = load_last_seen()
 
         # Register model watches
         self.store.add_watch(r"core\.player.*", self._on_player_event)
@@ -158,13 +160,14 @@ class WolferyConnection:
             self.subscribe_watches = True
 
         if path.endswith("ctrls"):
-            one_hour_ago = datetime.now() - timedelta(hours=1)
-            timestamp = int(one_hour_ago.timestamp() * 1000)
+            one_hour_ago = int((datetime.now() - timedelta(hours=1)).timestamp() * 1000)
             for rid in payload:
                 cc = self._parse_ctrl_rid(rid["rid"])
                 self.ctrl_chars[cc.ctrl_id] = cc
                 await self.event_bus.publish("character.tab.needed", character=cc.ctrl_id)
                 await self.send(f"subscribe.{cc.char_path}.nodes")
+                saved = self.last_seen.get(cc.ctrl_id)
+                timestamp = max(saved, one_hour_ago) if saved else one_hour_ago
                 log_params = {"charId": cc.char_id, "startTime": timestamp}
                 if cc.is_puppet:
                     log_params["puppeteerId"] = cc.puppeteer_id
@@ -258,6 +261,8 @@ class WolferyConnection:
     async def _on_close(self) -> None:
         self.state = State.NEW
         self.wsock = None
+        if self.last_seen:
+            save_last_seen(self.last_seen)
         await self.event_bus.publish("connection.closed")
         self.log_to_file("CONNECTION CLOSED.")
         
@@ -409,6 +414,13 @@ class WolferyConnection:
         return f"rolls {formula}: {total} [dim]{detail}[/dim]"
 
     async def _handle_output(self, j: dict, ctrl_id: str) -> None:
+        ts = j.get("time")
+        if isinstance(ts, (int, float)):
+            ts = int(ts)
+            prev = self.last_seen.get(ctrl_id, 0)
+            if ts > prev:
+                self.last_seen[ctrl_id] = ts
+
         frm = j.get("char", {"name": "", "id": ""})
         msg = j.get("msg", "")
         t = j.get("target", {"name": "", "id": ""})
