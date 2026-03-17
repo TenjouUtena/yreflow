@@ -1,6 +1,8 @@
 """Console command parsing and dispatch.
 
 Handles commands typed in the console tab, separate from character commands.
+Player-level commands (mail, whois, laston, etc.) are delegated to
+CommandHandler so the same logic is shared with character tabs.
 """
 
 from __future__ import annotations
@@ -12,14 +14,33 @@ from .name_resolver import NameParseException, parse_name
 from ..protocol.realm import KNOWN_REALMS
 
 if TYPE_CHECKING:
+    from .handler import CommandHandler
     from ..protocol.connection import WolferyConnection
     from ..protocol.model_store import ModelStore
 
+# Command types (from CommandHandler.detect_command_type) that are player-level
+# and should be available in the console without an active character.
+PLAYER_COMMANDS: set[str] = {
+    "mail",
+    "laston",
+    "whois",
+    "lookup",
+    "watch",
+    "unwatch",
+    "settings",
+}
+
 
 class ConsoleHandler:
-    def __init__(self, connection: WolferyConnection, store: ModelStore):
+    def __init__(
+        self,
+        connection: WolferyConnection,
+        store: ModelStore,
+        command_handler: CommandHandler | None = None,
+    ):
         self.conn = connection
         self.store = store
+        self.command_handler = command_handler
 
     async def process_command(self, command: str) -> CommandResult:
         command = command.strip()
@@ -33,11 +54,22 @@ class ConsoleHandler:
         handler = self._commands.get(cmd)
         if handler:
             return await handler(self, args)
+
+        # Try player-level commands via the main CommandHandler.
+        if self.command_handler:
+            cmd_type, content, func = self.command_handler.detect_command_type(command)
+            if cmd_type in PLAYER_COMMANDS and func is not None:
+                return await func(content, None)
+
         return CommandResult(success=False, notification=f"Unknown console command: {cmd}")
 
     async def _handle_help(self, args: str) -> CommandResult:
         lines = ["Console commands:"]
         for cmd in sorted(self._commands):
+            lines.append(f"  {cmd}")
+        lines.append("")
+        lines.append("Player commands (also available here):")
+        for cmd in sorted(PLAYER_COMMANDS):
             lines.append(f"  {cmd}")
         return CommandResult(display_text="\n".join(lines))
 

@@ -9,7 +9,7 @@ from PIL import Image as PILImage
 
 log = logging.getLogger(__name__)
 
-AvatarSize = Literal["xxs","xs","s", "m", "l", "xl", "xxl"]
+AvatarSize = Literal["s", "m", "l", "xl", "xxl"]
 
 _DEFAULT_FILE_URL = "https://file.wolfery.com"
 _DEFAULT_COOKIE = "wolfery-auth-token"

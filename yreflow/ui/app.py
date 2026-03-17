@@ -285,6 +285,10 @@ class WolferyApp(App):
         # Console tab: separate command handler
         if self.active_character == _CONSOLE_ID:
             result = await self.controller.handle_console_command(command)
+            if result and result.look_data:
+                self.push_screen(LookScreen(result.look_data, on_url=self._publish_url))
+            if result and result.open_settings:
+                self.action_open_settings()
             if result and result.display_text:
                 await self.display_system_text(result.display_text)
             if result and result.notification:

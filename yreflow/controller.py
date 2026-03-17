@@ -33,7 +33,7 @@ class Controller:
         self.store = ModelStore(event_bus=self.event_bus)
         self.connection = WolferyConnection(config, self.store, self.event_bus)
         self.commands = CommandHandler(self.connection, self.store)
-        self.console_commands = ConsoleHandler(self.connection, self.store)
+        self.console_commands = ConsoleHandler(self.connection, self.store, self.commands)
         self.url_catcher = UrlCatcher(self.event_bus)
         self.plugin_manager = PluginManager(self.event_bus, self.store, self.connection)
         self._reconnect_delay = 5.0

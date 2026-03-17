@@ -904,7 +904,7 @@ class CommandHandler:
 
         return CommandResult(notification="No area rules found.")
 
-    async def handle_laston(self, name_to_check, cc: ControlledChar) -> CommandResult:
+    async def handle_laston(self, name_to_check, cc: ControlledChar | None) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_check, awake=False)
         except NameParseException as e:
@@ -926,7 +926,7 @@ class CommandHandler:
             display_text=f"{char_name} was last online {last_awake}"
         )
 
-    async def handle_whois(self, name_to_check, cc: ControlledChar) -> CommandResult:
+    async def handle_whois(self, name_to_check, cc: ControlledChar | None) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_check, awake=False)
         except NameParseException as e:
@@ -1001,7 +1001,7 @@ class CommandHandler:
 
         return await self._look_character(content, cc)
 
-    async def handle_lookup(self, content, cc: ControlledChar) -> CommandResult:
+    async def handle_lookup(self, content, cc: ControlledChar | None) -> CommandResult:
         payload = content.split(' ')[0]
         msg_id = await self.conn.send(f"call.core.player.{self.conn.player}.lookupChars",
                              {"extended": True,
@@ -1030,7 +1030,7 @@ class CommandHandler:
         )
         return CommandResult(display_text="No longer looking for RP.")
 
-    async def handle_settings(self, content: str, cc: ControlledChar) -> CommandResult:
+    async def handle_settings(self, content: str, cc: ControlledChar | None) -> CommandResult:
         return CommandResult(open_settings=True)
 
     async def handle_mute_travel(self, mute: bool, cc: ControlledChar) -> CommandResult:
@@ -1058,19 +1058,28 @@ class CommandHandler:
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)
 
-    async def handle_mail(self, content, cc: ControlledChar) -> CommandResult:
+    async def handle_mail(self, content, cc: ControlledChar | None) -> CommandResult:
         return await self.mail_manager.process_command(content, cc)
 
-    async def handle_watch(self, content: str, cc: ControlledChar) -> CommandResult:
+    async def handle_watch(self, content: str, cc: ControlledChar | None) -> CommandResult:
         """Add a character to the watch list by name."""
         char_name = content.strip()
         if not char_name:
             return CommandResult(success=False, notification="Usage: watch <name>")
 
+        # Watcher char_id: use active character if available, otherwise
+        # pick the first owned character from the player's controlled list.
+        watcher_id = cc.char_id if cc else self._first_owned_char_id()
+        if not watcher_id:
+            return CommandResult(
+                success=False,
+                notification="No character available to watch from.",
+            )
+
         # Try local resolution first (works for awake and previously-seen chars)
         try:
             target_id = parse_name(self.store, char_name, awake=False)
-            return await self._do_watch(target_id, cc.char_id)
+            return await self._do_watch(target_id, watcher_id)
         except NameParseException:
             pass
 
@@ -1081,9 +1090,26 @@ class CommandHandler:
         )
         self.conn.add_message_wait(
             msg_id,
-            lambda result, cid=cc.char_id: self._on_watch_getchar(result, cid),
+            lambda result, cid=watcher_id: self._on_watch_getchar(result, cid),
         )
         return CommandResult(notification="Looking up...")
+
+    def _first_owned_char_id(self) -> str | None:
+        """Return the char_id of the first character the player controls."""
+        if not self.conn.player:
+            return None
+        try:
+            ctrls = self.store.get(
+                f"core.player.{self.conn.player}.ctrls._value"
+            )
+            for entry in ctrls:
+                rid = entry.get("rid", "")
+                parts = rid.split(".")
+                if len(parts) >= 3:
+                    return parts[2]
+        except KeyError:
+            pass
+        return None
 
     async def _do_watch(self, target_id: str, watcher_char_id: str) -> CommandResult:
         """Send addWatcher for a resolved target."""
@@ -1117,7 +1143,7 @@ class CommandHandler:
             "notification", text=f"Now watching {full_name}."
         )
 
-    async def handle_unwatch(self, content: str, cc: ControlledChar) -> CommandResult:
+    async def handle_unwatch(self, content: str, cc: ControlledChar | None) -> CommandResult:
         """Remove a character from the watch list by name."""
         char_name = content.strip()
         if not char_name:
