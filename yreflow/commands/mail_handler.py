@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from .handler import CommandResult, _relative_time
 from .name_resolver import parse_name, NameParseException
+from ..formatter import format_message
 
 if TYPE_CHECKING:
     from ..protocol.connection import WolferyConnection
@@ -308,7 +309,17 @@ class MailManager:
         to_name = self._char_name(envelope.get("to", {}))
         received = envelope.get("received", 0)
         time_str = _relative_time(received) if received else "?"
-        text = msg_data.get("text", "(no content)")
+        raw_text = msg_data.get("text", "(no content)")
+
+        # Format through the standard Wolfery markup pipeline.
+        text = format_message(raw_text)
+
+        # Handle pose/action messages: text starting with ':' means an action,
+        # so strip the colon and prepend the sender's name (like normal pose display).
+        if raw_text.startswith(":"):
+            text = format_message(raw_text[1:])
+            sep = "" if text and text[0] in "',.!?:;-\u2019" else " "
+            text = f"[bold cyan]{from_name}[/bold cyan]{sep}{text}"
 
         lines = [
             f"[bold]Mail from {from_name}[/bold] ({time_str}):",

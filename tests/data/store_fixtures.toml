@@ -58,6 +58,12 @@ name = "Back Alley"
 keys = ["alley", "south"]
 target_room = "room003ghi"
 
+[[room.exits]]
+name = "Miranda's Cafe"
+keys = ["cafe", "east"]
+target_room = "room004jkl"
+transparent = true
+
 [puppet]
 char_id = "pup567tuv"
 puppeteer_id = "abc123def456"

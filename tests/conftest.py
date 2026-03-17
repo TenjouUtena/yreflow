@@ -98,12 +98,29 @@ async def populated_store(store):
     for i, ex in enumerate(room.get("exits", [])):
         exit_id = f"exit{i:03d}"
         exit_rid = f"core.room.{room_id}.exit.{exit_id}"
-        await store.set(exit_rid, {
+        exit_data = {
             "id": exit_id,
             "name": ex["name"],
             "keys": {"data": ex["keys"]},
             "targetRoom": ex["target_room"],
-        })
+        }
+        if ex.get("transparent"):
+            # Transparent exit: target -> afar model -> awake chars
+            afar_rid = f"core.room.{ex['target_room']}.afar"
+            exit_data["target"] = {"rid": afar_rid}
+            # Set up afar model with awake characters
+            awake_rid = f"{afar_rid}.awake"
+            await store.set(afar_rid, {
+                "awake": {"rid": awake_rid},
+            })
+            # Pip and Moss are visible through the cafe exit
+            await store.set(awake_rid, {
+                "_value": [
+                    {"rid": "core.char.ghi789jkl012"},
+                    {"rid": "core.char.mno345pqr678"},
+                ],
+            })
+        await store.set(exit_rid, exit_data)
         exit_values.append({"rid": exit_rid})
     await store.set(f"core.room.{room_id}.exits", {"_value": exit_values})
 

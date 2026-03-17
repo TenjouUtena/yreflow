@@ -131,6 +131,8 @@ class LookScreen(ModalScreen):
                 await self._mount_character(body)
             elif self.data["type"] == "whois":
                 await self._mount_whois(body)
+            elif self.data["type"] == "exit":
+                await self._mount_exit(body)
             elif self.data["type"] == "rules":
                 await self._mount_rules(body)
 
@@ -177,6 +179,26 @@ class LookScreen(ModalScreen):
                         markup=True,
                     )
                 )
+
+    async def _mount_exit(self, body: VerticalScroll) -> None:
+        keys = self.data.get("keys", "")
+        if keys:
+            await body.mount(
+                Static(f"[dim]({keys})[/dim]", classes="look-text", markup=True)
+            )
+        present = self.data.get("present", [])
+        if present:
+            await body.mount(
+                Static("Present", classes="look-section-title", markup=True)
+            )
+            for name in present:
+                await body.mount(
+                    Static(f"  {name}", classes="look-exit", markup=True)
+                )
+        else:
+            await body.mount(
+                Static("[dim]No one visible.[/dim]", classes="look-text", markup=True)
+            )
 
     async def _mount_area_content(self, container, area: dict) -> None:
         if area.get("pop", 0) > 0:
@@ -333,6 +355,8 @@ class LookScreen(ModalScreen):
             await self._mount_room(body)
         elif data["type"] == "character":
             await self._mount_character(body)
+        elif data["type"] == "exit":
+            await self._mount_exit(body)
         elif data["type"] == "whois":
             await self._mount_whois(body)
         elif data["type"] == "rules":

@@ -387,3 +387,56 @@ class TestCharacterDataGathering:
         assert data["auth_token"] == "fake-token"
         assert data["file_base_url"] == "https://file.wolfery.com"
         assert data["cookie_name"] == "wolfery-auth-token"
+
+
+@pytest.mark.asyncio
+class TestLookExitHandler:
+    """Verify 'look <exit>' shows exit info and transparent exit occupants."""
+
+    async def test_look_exit_returns_exit_data(self, handler, cc_thorn):
+        """Looking at a known exit returns exit type look_data."""
+        result = await handler.handle_look("cafe", cc_thorn)
+        assert result.success
+        assert result.look_data is not None
+        assert result.look_data["type"] == "exit"
+        assert result.look_data["name"] == "Miranda's Cafe"
+
+    async def test_look_exit_shows_keys(self, handler, cc_thorn):
+        """Exit keys are included in look_data."""
+        result = await handler.handle_look("east", cc_thorn)
+        assert result.look_data is not None
+        assert "cafe" in result.look_data["keys"]
+        assert "east" in result.look_data["keys"]
+
+    async def test_look_transparent_exit_shows_present(self, handler, cc_thorn):
+        """Transparent exit lists characters visible through it."""
+        result = await handler.handle_look("cafe", cc_thorn)
+        present = result.look_data["present"]
+        assert len(present) == 2
+        assert "Pip Meadowbrook" in present
+        assert "Moss Ferndale" in present
+
+    async def test_look_opaque_exit_no_present(self, handler, cc_thorn):
+        """Non-transparent exit has empty present list."""
+        result = await handler.handle_look("market", cc_thorn)
+        assert result.look_data is not None
+        assert result.look_data["type"] == "exit"
+        assert result.look_data["name"] == "Market Square"
+        assert result.look_data["present"] == []
+
+    async def test_look_exit_case_insensitive(self, handler, cc_thorn):
+        """Exit key matching is case-insensitive."""
+        result = await handler.handle_look("Cafe", cc_thorn)
+        assert result.look_data is not None
+        assert result.look_data["type"] == "exit"
+
+    async def test_look_nonexistent_falls_to_character(self, handler, cc_thorn):
+        """Name that isn't an exit falls through to character lookup."""
+        result = await handler.handle_look("Pip", cc_thorn)
+        # Character lookup sends a server call, returns "Looking..."
+        assert result.notification == "Looking..."
+
+    async def test_look_no_args_returns_room(self, handler, cc_thorn):
+        """'look' with no args still returns room data."""
+        result = await handler.handle_look(None, cc_thorn)
+        assert result.look_data["type"] == "room"

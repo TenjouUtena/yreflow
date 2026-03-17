@@ -248,3 +248,30 @@ class TestFormatting:
         assert "Pip Seedling" in result
         assert "Thorn Ashvale" in result
         assert "Hello friend!" in result
+
+    def test_format_message_pose(self, mail):
+        """Pose messages (starting with ':') prepend the sender's name."""
+        envelope = {
+            "from": {"data": {"name": "Pip", "surname": "Seedling"}},
+            "to": {"data": {"name": "Thorn", "surname": "Ashvale"}},
+            "received": 1772978050762,
+        }
+        msg_data = {"text": ":waves cheerfully."}
+        result = mail._format_message(envelope, msg_data)
+        assert "Pip Seedling" in result
+        # The pose text should appear without the leading colon
+        assert "waves cheerfully." in result
+        # Should NOT contain the raw ':waves'
+        assert ":waves" not in result
+
+    def test_format_message_url(self, mail):
+        """URLs with descriptions should be formatted, not shown raw."""
+        envelope = {
+            "from": {"data": {"name": "Pip", "surname": "Seedling"}},
+            "to": {"data": {"name": "Thorn", "surname": "Ashvale"}},
+            "received": 1772978050762,
+        }
+        msg_data = {"text": "Check this [cool site](https://example.com) out!"}
+        result = mail._format_message(envelope, msg_data)
+        # The link text should be present
+        assert "cool site" in result

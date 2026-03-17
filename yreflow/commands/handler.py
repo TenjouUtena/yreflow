@@ -993,6 +993,12 @@ class CommandHandler:
     async def handle_look(self, content, cc: ControlledChar) -> CommandResult:
         if content is None:
             return self._look_room(cc)
+
+        # Try matching an exit first
+        exit_result = self._look_exit(content.strip(), cc)
+        if exit_result is not None:
+            return exit_result
+
         return await self._look_character(content, cc)
 
     async def handle_lookup(self, content, cc: ControlledChar) -> CommandResult:
@@ -1268,6 +1274,52 @@ class CommandHandler:
             "desc": room_desc,
             "exits": exits,
             "areas": areas,
+        })
+
+    def _look_exit(self, name_str: str, cc: ControlledChar) -> CommandResult | None:
+        """Try to look at an exit. Returns None if no exit matches."""
+        exit_model = self._find_exit_by_key(cc, name_str)
+        if exit_model is None:
+            return None
+
+        exit_name = exit_model.get("name", "?")
+        keys = exit_model.get("keys", {}).get("data", [])
+
+        # Check for transparent exit: target -> afar model -> awake chars
+        present = []
+        target_ref = exit_model.get("target")
+        if isinstance(target_ref, dict) and "rid" in target_ref:
+            try:
+                afar_model = self.store.get(target_ref["rid"])
+                awake_ref = afar_model.get("awake")
+                if isinstance(awake_ref, dict) and "rid" in awake_ref:
+                    awake_entries = self.store.get(awake_ref["rid"] + "._value")
+                elif isinstance(awake_ref, list):
+                    awake_entries = awake_ref
+                else:
+                    awake_entries = []
+                for entry in awake_entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    char_rid = entry.get("rid", "")
+                    if not char_rid:
+                        continue
+                    try:
+                        char_model = self.store.get(char_rid)
+                        char_name = char_model.get("name", "?")
+                        char_surname = char_model.get("surname", "")
+                        full = f"{char_name} {char_surname}".strip()
+                        present.append(full)
+                    except KeyError:
+                        continue
+            except KeyError:
+                pass
+
+        return CommandResult(look_data={
+            "type": "exit",
+            "name": exit_name,
+            "keys": ", ".join(keys),
+            "present": present,
         })
 
     async def _look_character(self, name_str: str, cc: ControlledChar) -> CommandResult:
