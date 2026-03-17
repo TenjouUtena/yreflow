@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from .handler import CommandResult, _relative_time
 from .name_resolver import parse_name, NameParseException
+from ..formatter import format_message
 
 if TYPE_CHECKING:
     from ..protocol.connection import WolferyConnection
@@ -35,7 +36,7 @@ class MailManager:
     # ------------------------------------------------------------------
 
     async def process_command(
-        self, content: str, cc: ControlledChar
+        self, content: str, cc: ControlledChar | None
     ) -> CommandResult:
         content = content.strip()
 
@@ -84,7 +85,7 @@ class MailManager:
                 continue
         return envelopes
 
-    async def handle_mail_list(self, cc: ControlledChar) -> CommandResult:
+    async def handle_mail_list(self, cc: ControlledChar | None) -> CommandResult:
         self.inbox_offset = 0
         store_key = self._inbox_store_key(0)
 
@@ -132,7 +133,7 @@ class MailManager:
     # More (pagination)
     # ------------------------------------------------------------------
 
-    async def handle_mail_more(self, cc: ControlledChar) -> CommandResult:
+    async def handle_mail_more(self, cc: ControlledChar | None) -> CommandResult:
         if not self.inbox:
             return CommandResult(
                 success=False, notification="No mail loaded. Type 'mail' first."
@@ -154,7 +155,7 @@ class MailManager:
     # ------------------------------------------------------------------
 
     async def handle_mail_send(
-        self, content: str, cc: ControlledChar
+        self, content: str, cc: ControlledChar | None
     ) -> CommandResult:
         m = re.match(r"([\w ,-]+?)\s*=\s*(.*)", content, re.DOTALL)
         if not m:
@@ -170,6 +171,14 @@ class MailManager:
                 success=False, notification="Mail message cannot be empty."
             )
 
+        # mail send requires a "from" character
+        from_id = cc.char_id if cc else self._first_owned_char_id()
+        if not from_id:
+            return CommandResult(
+                success=False,
+                notification="No character available to send mail from.",
+            )
+
         try:
             target_id = parse_name(self.store, name, awake=False)
         except NameParseException as e:
@@ -179,12 +188,29 @@ class MailManager:
             f"call.mail.player.{self.conn.player}.inbox.send",
             {
                 "toCharId": target_id,
-                "fromCharId": cc.char_id,
+                "fromCharId": from_id,
                 "text": text,
             },
         )
         self.conn.add_message_wait(msg_id, self._on_send_result)
         return CommandResult(notification="Sending mail...")
+
+    def _first_owned_char_id(self) -> str | None:
+        """Return the char_id of the first character the player controls."""
+        if not self.conn.player:
+            return None
+        try:
+            ctrls = self.store.get(
+                f"core.player.{self.conn.player}.ctrls._value"
+            )
+            for entry in ctrls:
+                rid = entry.get("rid", "")
+                parts = rid.split(".")
+                if len(parts) >= 3:
+                    return parts[2]
+        except KeyError:
+            pass
+        return None
 
     async def _on_send_result(self, payload) -> None:
         to_char = payload.get("toChar", {}) if isinstance(payload, dict) else {}
@@ -200,7 +226,7 @@ class MailManager:
     # ------------------------------------------------------------------
 
     async def handle_mail_read(
-        self, number_str: str, cc: ControlledChar
+        self, number_str: str, cc: ControlledChar | None
     ) -> CommandResult:
         try:
             idx = int(number_str)
@@ -308,7 +334,17 @@ class MailManager:
         to_name = self._char_name(envelope.get("to", {}))
         received = envelope.get("received", 0)
         time_str = _relative_time(received) if received else "?"
-        text = msg_data.get("text", "(no content)")
+        raw_text = msg_data.get("text", "(no content)")
+
+        # Format through the standard Wolfery markup pipeline.
+        text = format_message(raw_text)
+
+        # Handle pose/action messages: text starting with ':' means an action,
+        # so strip the colon and prepend the sender's name (like normal pose display).
+        if raw_text.startswith(":"):
+            text = format_message(raw_text[1:])
+            sep = "" if text and text[0] in "',.!?:;-\u2019" else " "
+            text = f"[bold cyan]{from_name}[/bold cyan]{sep}{text}"
 
         lines = [
             f"[bold]Mail from {from_name}[/bold] ({time_str}):",

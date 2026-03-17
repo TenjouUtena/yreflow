@@ -16,7 +16,7 @@ from collections.abc import Callable
 
 from ...formatter import format_message
 from ...config import formatter_settings
-from ...protocol.avatar import get_avatar
+from ...protocol.avatar import get_avatar, get_char_image
 
 
 log = logging.getLogger("yreflow.look_screen")
@@ -131,6 +131,8 @@ class LookScreen(ModalScreen):
                 await self._mount_character(body)
             elif self.data["type"] == "whois":
                 await self._mount_whois(body)
+            elif self.data["type"] == "exit":
+                await self._mount_exit(body)
             elif self.data["type"] == "rules":
                 await self._mount_rules(body)
 
@@ -178,6 +180,26 @@ class LookScreen(ModalScreen):
                     )
                 )
 
+    async def _mount_exit(self, body: VerticalScroll) -> None:
+        keys = self.data.get("keys", "")
+        if keys:
+            await body.mount(
+                Static(f"[dim]({keys})[/dim]", classes="look-text", markup=True)
+            )
+        present = self.data.get("present", [])
+        if present:
+            await body.mount(
+                Static("Present", classes="look-section-title", markup=True)
+            )
+            for name in present:
+                await body.mount(
+                    Static(f"  {name}", classes="look-exit", markup=True)
+                )
+        else:
+            await body.mount(
+                Static("[dim]No one visible.[/dim]", classes="look-text", markup=True)
+            )
+
     async def _mount_area_content(self, container, area: dict) -> None:
         if area.get("pop", 0) > 0:
             await container.mount(
@@ -198,19 +220,31 @@ class LookScreen(ModalScreen):
             )
 
     async def _mount_character(self, body: VerticalScroll) -> None:
+        image_id = self.data.get("image_id", "")
         avatar_key = self.data.get("avatar", "")
         desc = self.data.get("desc","")
-        if avatar_key:
+
+        # Prefer full image (inroom.image) over avatar thumbnail
+        image_key = image_id or avatar_key
+        if image_key:
             try:
-                if avatar_key != self._cached_image_url or self._cached_image is None:
-                    self._cached_image = await get_avatar(
-                        avatar_key,
-                        size="xl",
-                        auth_token=self.data.get("auth_token", ""),
-                        file_base_url=self.data.get("file_base_url", ""),
-                        cookie_name=self.data.get("cookie_name", ""),
-                    )
-                    self._cached_image_url = avatar_key
+                if image_key != self._cached_image_url or self._cached_image is None:
+                    if image_id:
+                        self._cached_image = await get_char_image(
+                            image_id,
+                            auth_token=self.data.get("auth_token", ""),
+                            file_base_url=self.data.get("file_base_url", ""),
+                            cookie_name=self.data.get("cookie_name", ""),
+                        )
+                    else:
+                        self._cached_image = await get_avatar(
+                            avatar_key,
+                            size="xl",
+                            auth_token=self.data.get("auth_token", ""),
+                            file_base_url=self.data.get("file_base_url", ""),
+                            cookie_name=self.data.get("cookie_name", ""),
+                        )
+                    self._cached_image_url = image_key
                 await body.mount(TImage(self._cached_image, id="look-avatar"))
             except Exception:
                 pass
@@ -333,6 +367,8 @@ class LookScreen(ModalScreen):
             await self._mount_room(body)
         elif data["type"] == "character":
             await self._mount_character(body)
+        elif data["type"] == "exit":
+            await self._mount_exit(body)
         elif data["type"] == "whois":
             await self._mount_whois(body)
         elif data["type"] == "rules":

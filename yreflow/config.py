@@ -47,13 +47,25 @@ def clear_token() -> None:
     _write_config(config)
 
 
+def load_last_seen() -> dict[str, int]:
+    """Return the last_seen table from config (ctrl_id -> timestamp ms)."""
+    return load_config().get("last_seen", {})
+
+
+def save_last_seen(timestamps: dict[str, int]) -> None:
+    """Persist per-character last-seen timestamps to config."""
+    config = load_config()
+    config["last_seen"] = {k: v for k, v in timestamps.items() if isinstance(v, int)}
+    _write_config(config)
+
+
 def formatter_settings() -> dict:
     """Return formatter-related settings with defaults."""
     cfg = load_config()
     return {
-        "superscript_style": cfg.get("superscript_style", "unicode"),
+        "superscript_style": cfg.get("superscript_style", "highlight"),
         "superscript_color": cfg.get("superscript_color", "gold"),
-        "subscript_style": cfg.get("subscript_style", "unicode"),
+        "subscript_style": cfg.get("subscript_style", "highlight"),
         "subscript_color": cfg.get("subscript_color", "skyblue"),
     }
 
@@ -71,6 +83,16 @@ def _write_config(config: dict) -> None:
             lines.append(f"{key} = {'true' if value else 'false'}")
         elif isinstance(value, (int, float)):
             lines.append(f"{key} = {value}")
+        elif isinstance(value, dict):
+            lines.append(f"\n[{key}]")
+            for k, v in value.items():
+                if isinstance(v, str):
+                    escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+                    lines.append(f'{k} = "{escaped}"')
+                elif isinstance(v, (int, float)):
+                    lines.append(f"{k} = {v}")
+                elif isinstance(v, bool):
+                    lines.append(f"{k} = {'true' if v else 'false'}")
         elif isinstance(value, list):
             items = ", ".join(f'"{v}"' for v in value)
             lines.append(f"{key} = [{items}]")

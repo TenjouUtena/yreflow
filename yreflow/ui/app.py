@@ -172,14 +172,14 @@ class WolferyApp(App):
         # Restore highlighter preferences
         config = load_config()
         input_bar = self.query_one("#input-bar", InputBar)
-        if config.get("spellcheck_enabled", False):
+        if config.get("spellcheck_enabled", True):
             input_bar.set_highlighter_state("spellcheck", True)
-        if config.get("markup_preview_enabled", False):
+        if config.get("markup_preview_enabled", True):
             input_bar.set_highlighter_state("markup", True)
 
         input_bar.focus()
 
-        if config.get("console_enabled", False):
+        if config.get("console_enabled", True):
             await self._create_console_tab()
 
         if self.controller:
@@ -285,6 +285,10 @@ class WolferyApp(App):
         # Console tab: separate command handler
         if self.active_character == _CONSOLE_ID:
             result = await self.controller.handle_console_command(command)
+            if result and result.look_data:
+                self.push_screen(LookScreen(result.look_data, on_url=self._publish_url))
+            if result and result.open_settings:
+                self.action_open_settings()
             if result and result.display_text:
                 await self.display_system_text(result.display_text)
             if result and result.notification:
@@ -573,6 +577,20 @@ class WolferyApp(App):
         except (KeyError, AttributeError):
             return False
 
+    def _is_sender_muted(self, sender_id: str) -> bool:
+        """Check if sender_id is in the player's mutedchars collection."""
+        if not self.controller or not sender_id:
+            return False
+        store = self.controller.store
+        player = self.controller.connection.player
+        if not player:
+            return False
+        try:
+            mutedchars = store.get(f"core.player.{player}.mutedchars")
+            return sender_id in mutedchars
+        except (KeyError, AttributeError, TypeError):
+            return False
+
     # --- Focus color ---
 
     def _get_focus_color(self, sender_id: str, character: str) -> str | None:
@@ -600,9 +618,13 @@ class WolferyApp(App):
             return
 
         views = self.character_views[character]
+        sender_id = message["frm"].get("id", "")
+        char_muted = self._is_sender_muted(sender_id)
         mute_travel = self._get_mute_travel(character)
         mute_ooc = self._get_mute_ooc(character)
-        if style in self.unimportant_styles:
+        if char_muted:
+            view = views["unimportant"]
+        elif style in self.unimportant_styles:
             # If muteTravel is off, travel messages go to the main view
             if not mute_travel and style in _TRAVEL_STYLES:
                 view = views["main"]
@@ -617,7 +639,6 @@ class WolferyApp(App):
         if style == 'describe':
             sender = message["frm"].get("name","") + ' ' + message["frm"].get("surname","")
 
-        sender_id = message["frm"].get("id", "")
         if style == "roll":
             msg_text = message.get("msg", "")  # already Rich-formatted
         else:
@@ -649,7 +670,8 @@ class WolferyApp(App):
 
         # Unread tracking for non-active characters
         is_muted = (
-            (style in self.unimportant_styles and not (not mute_travel and style in _TRAVEL_STYLES))
+            char_muted
+            or (style in self.unimportant_styles and not (not mute_travel and style in _TRAVEL_STYLES))
             or (mute_ooc and style in _OOC_STYLES)
         )
         if character != self.active_character and not is_muted:

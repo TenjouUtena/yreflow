@@ -904,7 +904,7 @@ class CommandHandler:
 
         return CommandResult(notification="No area rules found.")
 
-    async def handle_laston(self, name_to_check, cc: ControlledChar) -> CommandResult:
+    async def handle_laston(self, name_to_check, cc: ControlledChar | None) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_check, awake=False)
         except NameParseException as e:
@@ -926,7 +926,7 @@ class CommandHandler:
             display_text=f"{char_name} was last online {last_awake}"
         )
 
-    async def handle_whois(self, name_to_check, cc: ControlledChar) -> CommandResult:
+    async def handle_whois(self, name_to_check, cc: ControlledChar | None) -> CommandResult:
         try:
             target_id = parse_name(self.store, name_to_check, awake=False)
         except NameParseException as e:
@@ -993,9 +993,15 @@ class CommandHandler:
     async def handle_look(self, content, cc: ControlledChar) -> CommandResult:
         if content is None:
             return self._look_room(cc)
+
+        # Try matching an exit first
+        exit_result = self._look_exit(content.strip(), cc)
+        if exit_result is not None:
+            return exit_result
+
         return await self._look_character(content, cc)
 
-    async def handle_lookup(self, content, cc: ControlledChar) -> CommandResult:
+    async def handle_lookup(self, content, cc: ControlledChar | None) -> CommandResult:
         payload = content.split(' ')[0]
         msg_id = await self.conn.send(f"call.core.player.{self.conn.player}.lookupChars",
                              {"extended": True,
@@ -1024,7 +1030,7 @@ class CommandHandler:
         )
         return CommandResult(display_text="No longer looking for RP.")
 
-    async def handle_settings(self, content: str, cc: ControlledChar) -> CommandResult:
+    async def handle_settings(self, content: str, cc: ControlledChar | None) -> CommandResult:
         return CommandResult(open_settings=True)
 
     async def handle_mute_travel(self, mute: bool, cc: ControlledChar) -> CommandResult:
@@ -1052,19 +1058,28 @@ class CommandHandler:
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)
 
-    async def handle_mail(self, content, cc: ControlledChar) -> CommandResult:
+    async def handle_mail(self, content, cc: ControlledChar | None) -> CommandResult:
         return await self.mail_manager.process_command(content, cc)
 
-    async def handle_watch(self, content: str, cc: ControlledChar) -> CommandResult:
+    async def handle_watch(self, content: str, cc: ControlledChar | None) -> CommandResult:
         """Add a character to the watch list by name."""
         char_name = content.strip()
         if not char_name:
             return CommandResult(success=False, notification="Usage: watch <name>")
 
+        # Watcher char_id: use active character if available, otherwise
+        # pick the first owned character from the player's controlled list.
+        watcher_id = cc.char_id if cc else self._first_owned_char_id()
+        if not watcher_id:
+            return CommandResult(
+                success=False,
+                notification="No character available to watch from.",
+            )
+
         # Try local resolution first (works for awake and previously-seen chars)
         try:
             target_id = parse_name(self.store, char_name, awake=False)
-            return await self._do_watch(target_id, cc.char_id)
+            return await self._do_watch(target_id, watcher_id)
         except NameParseException:
             pass
 
@@ -1075,9 +1090,26 @@ class CommandHandler:
         )
         self.conn.add_message_wait(
             msg_id,
-            lambda result, cid=cc.char_id: self._on_watch_getchar(result, cid),
+            lambda result, cid=watcher_id: self._on_watch_getchar(result, cid),
         )
         return CommandResult(notification="Looking up...")
+
+    def _first_owned_char_id(self) -> str | None:
+        """Return the char_id of the first character the player controls."""
+        if not self.conn.player:
+            return None
+        try:
+            ctrls = self.store.get(
+                f"core.player.{self.conn.player}.ctrls._value"
+            )
+            for entry in ctrls:
+                rid = entry.get("rid", "")
+                parts = rid.split(".")
+                if len(parts) >= 3:
+                    return parts[2]
+        except KeyError:
+            pass
+        return None
 
     async def _do_watch(self, target_id: str, watcher_char_id: str) -> CommandResult:
         """Send addWatcher for a resolved target."""
@@ -1111,7 +1143,7 @@ class CommandHandler:
             "notification", text=f"Now watching {full_name}."
         )
 
-    async def handle_unwatch(self, content: str, cc: ControlledChar) -> CommandResult:
+    async def handle_unwatch(self, content: str, cc: ControlledChar | None) -> CommandResult:
         """Remove a character from the watch list by name."""
         char_name = content.strip()
         if not char_name:
@@ -1270,6 +1302,52 @@ class CommandHandler:
             "areas": areas,
         })
 
+    def _look_exit(self, name_str: str, cc: ControlledChar) -> CommandResult | None:
+        """Try to look at an exit. Returns None if no exit matches."""
+        exit_model = self._find_exit_by_key(cc, name_str)
+        if exit_model is None:
+            return None
+
+        exit_name = exit_model.get("name", "?")
+        keys = exit_model.get("keys", {}).get("data", [])
+
+        # Check for transparent exit: target -> afar model -> awake chars
+        present = []
+        target_ref = exit_model.get("target")
+        if isinstance(target_ref, dict) and "rid" in target_ref:
+            try:
+                afar_model = self.store.get(target_ref["rid"])
+                awake_ref = afar_model.get("awake")
+                if isinstance(awake_ref, dict) and "rid" in awake_ref:
+                    awake_entries = self.store.get(awake_ref["rid"] + "._value")
+                elif isinstance(awake_ref, list):
+                    awake_entries = awake_ref
+                else:
+                    awake_entries = []
+                for entry in awake_entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    char_rid = entry.get("rid", "")
+                    if not char_rid:
+                        continue
+                    try:
+                        char_model = self.store.get(char_rid)
+                        char_name = char_model.get("name", "?")
+                        char_surname = char_model.get("surname", "")
+                        full = f"{char_name} {char_surname}".strip()
+                        present.append(full)
+                    except KeyError:
+                        continue
+            except KeyError:
+                pass
+
+        return CommandResult(look_data={
+            "type": "exit",
+            "name": exit_name,
+            "keys": ", ".join(keys),
+            "present": present,
+        })
+
     async def _look_character(self, name_str: str, cc: ControlledChar) -> CommandResult:
         """Look at a character: send ctrl.look, then gather data on response."""
         try:
@@ -1359,6 +1437,15 @@ class CommandHandler:
         # Avatar key
         avatar = s.get_character_attribute(char_id, "avatar", default="")
 
+        # Full image ID (from core.char.<id>.inroom.image ref)
+        image_id = ""
+        try:
+            image_ref = s.get_character_attribute(char_id, "image")
+            if isinstance(image_ref, dict) and "rid" in image_ref:
+                image_id = image_ref["rid"].split(".")[3]
+        except (KeyError, TypeError, IndexError):
+            pass
+
         return {
             "type": "character",
             "char_id": char_id,
@@ -1369,6 +1456,7 @@ class CommandHandler:
             "about": about,
             "tags": tags,
             "avatar": avatar,
+            "image_id": image_id,
             "auth_token": self.conn.token or "",
             "file_base_url": self.conn.realm.file_url,
             "cookie_name": self.conn.realm.cookie_name,

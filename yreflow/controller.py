@@ -33,7 +33,7 @@ class Controller:
         self.store = ModelStore(event_bus=self.event_bus)
         self.connection = WolferyConnection(config, self.store, self.event_bus)
         self.commands = CommandHandler(self.connection, self.store)
-        self.console_commands = ConsoleHandler(self.connection, self.store)
+        self.console_commands = ConsoleHandler(self.connection, self.store, self.commands)
         self.url_catcher = UrlCatcher(self.event_bus)
         self.plugin_manager = PluginManager(self.event_bus, self.store, self.connection)
         self._reconnect_delay = 5.0
@@ -145,7 +145,7 @@ class Controller:
     async def _on_connection_closed(self, event_name: str, **kw) -> None:
         await self.ui.update_connection_status("disconnected")
         await self.ui.display_system_text("Connection closed.")
-        if load_config().get("auto_reconnect", False):
+        if load_config().get("auto_reconnect", True):
             await self.ui.update_connection_status("reconnecting")
             delay = self._reconnect_delay
             await self.ui.display_system_text(f"Reconnecting in {delay:.0f} seconds...")

@@ -130,10 +130,10 @@ class SettingsScreen(TabbableModal, ModalScreen[None]):
         with VerticalScroll(id="settings-container"):
             yield Static("Settings", id="settings-title")
             for label, key in self.SETTINGS:
-                yield _SettingRow(label, key, config.get(key, False))
+                yield _SettingRow(label, key, config.get(key, True))
 
             # Superscript style
-            sup_style = config.get("superscript_style", "unicode")
+            sup_style = config.get("superscript_style", "highlight")
             yield _SettingSelect(
                 "Superscript Style", "superscript_style",
                 _STYLE_OPTIONS, sup_style,
@@ -146,7 +146,7 @@ class SettingsScreen(TabbableModal, ModalScreen[None]):
             )
 
             # Subscript style
-            sub_style = config.get("subscript_style", "unicode")
+            sub_style = config.get("subscript_style", "highlight")
             yield _SettingSelect(
                 "Subscript Style", "subscript_style",
                 _STYLE_OPTIONS, sub_style,
@@ -161,9 +161,9 @@ class SettingsScreen(TabbableModal, ModalScreen[None]):
     def on_mount(self) -> None:
         config = load_config()
         # Hide color rows if style is unicode
-        if config.get("superscript_style", "unicode") != "highlight":
+        if config.get("superscript_style", "highlight") != "highlight":
             self.query_one("#row-superscript_color").display = False
-        if config.get("subscript_style", "unicode") != "highlight":
+        if config.get("subscript_style", "highlight") != "highlight":
             self.query_one("#row-subscript_color").display = False
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
