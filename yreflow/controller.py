@@ -145,7 +145,7 @@ class Controller:
     async def _on_connection_closed(self, event_name: str, **kw) -> None:
         await self.ui.update_connection_status("disconnected")
         await self.ui.display_system_text("Connection closed.")
-        if load_config().get("auto_reconnect", False):
+        if load_config().get("auto_reconnect", True):
             await self.ui.update_connection_status("reconnecting")
             delay = self._reconnect_delay
             await self.ui.display_system_text(f"Reconnecting in {delay:.0f} seconds...")

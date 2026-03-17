@@ -172,14 +172,14 @@ class WolferyApp(App):
         # Restore highlighter preferences
         config = load_config()
         input_bar = self.query_one("#input-bar", InputBar)
-        if config.get("spellcheck_enabled", False):
+        if config.get("spellcheck_enabled", True):
             input_bar.set_highlighter_state("spellcheck", True)
-        if config.get("markup_preview_enabled", False):
+        if config.get("markup_preview_enabled", True):
             input_bar.set_highlighter_state("markup", True)
 
         input_bar.focus()
 
-        if config.get("console_enabled", False):
+        if config.get("console_enabled", True):
             await self._create_console_tab()
 
         if self.controller:

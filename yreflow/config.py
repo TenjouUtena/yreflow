@@ -51,9 +51,9 @@ def formatter_settings() -> dict:
     """Return formatter-related settings with defaults."""
     cfg = load_config()
     return {
-        "superscript_style": cfg.get("superscript_style", "unicode"),
+        "superscript_style": cfg.get("superscript_style", "highlight"),
         "superscript_color": cfg.get("superscript_color", "gold"),
-        "subscript_style": cfg.get("subscript_style", "unicode"),
+        "subscript_style": cfg.get("subscript_style", "highlight"),
         "subscript_color": cfg.get("subscript_color", "skyblue"),
     }
 
