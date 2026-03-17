@@ -73,6 +73,7 @@ class WolferyConnection:
         self.directed_contacts: list[DirectedContact] = []
         self.ctrl_chars: dict[str, ControlledChar] = {}
         self.last_seen: dict[str, int] = load_last_seen()
+        self._connect_lock = asyncio.Lock()
 
         # Register model watches
         self.store.add_watch(r"core\.player.*", self._on_player_event)
@@ -227,23 +228,26 @@ class WolferyConnection:
     # --- WebSocket connection ---
 
     async def connect(self) -> None:
-        uri = self.realm.ws_url
-        headers = {}
-        if self.auth_mode == "token" and self.token:
-            headers["Cookie"] = f"{self.realm.cookie_name}={self.token}"
-        try:
-            async with connect(
-                uri,
-                additional_headers=headers,
-            ) as wsock:
-                await self._on_open(wsock)
-                await self._consumer_handler(wsock)
-        except TimeoutError:
-            await self.event_bus.publish("connection.failed")
-        except websockets.exceptions.ConnectionClosedError:
-            pass
-        finally:
-            await self._on_close()
+        if self._connect_lock.locked():
+            return  # already connecting/connected
+        async with self._connect_lock:
+            uri = self.realm.ws_url
+            headers = {}
+            if self.auth_mode == "token" and self.token:
+                headers["Cookie"] = f"{self.realm.cookie_name}={self.token}"
+            try:
+                async with connect(
+                    uri,
+                    additional_headers=headers,
+                ) as wsock:
+                    await self._on_open(wsock)
+                    await self._consumer_handler(wsock)
+            except TimeoutError:
+                await self.event_bus.publish("connection.failed")
+            except websockets.exceptions.ConnectionClosedError:
+                pass
+            finally:
+                await self._on_close()
 
     async def _on_open(self, ws) -> None:
         self.wsock = ws
