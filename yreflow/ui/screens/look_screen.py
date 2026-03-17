@@ -16,7 +16,7 @@ from collections.abc import Callable
 
 from ...formatter import format_message
 from ...config import formatter_settings
-from ...protocol.avatar import get_avatar
+from ...protocol.avatar import get_avatar, get_char_image
 
 
 log = logging.getLogger("yreflow.look_screen")
@@ -220,19 +220,31 @@ class LookScreen(ModalScreen):
             )
 
     async def _mount_character(self, body: VerticalScroll) -> None:
+        image_id = self.data.get("image_id", "")
         avatar_key = self.data.get("avatar", "")
         desc = self.data.get("desc","")
-        if avatar_key:
+
+        # Prefer full image (inroom.image) over avatar thumbnail
+        image_key = image_id or avatar_key
+        if image_key:
             try:
-                if avatar_key != self._cached_image_url or self._cached_image is None:
-                    self._cached_image = await get_avatar(
-                        avatar_key,
-                        size="xl",
-                        auth_token=self.data.get("auth_token", ""),
-                        file_base_url=self.data.get("file_base_url", ""),
-                        cookie_name=self.data.get("cookie_name", ""),
-                    )
-                    self._cached_image_url = avatar_key
+                if image_key != self._cached_image_url or self._cached_image is None:
+                    if image_id:
+                        self._cached_image = await get_char_image(
+                            image_id,
+                            auth_token=self.data.get("auth_token", ""),
+                            file_base_url=self.data.get("file_base_url", ""),
+                            cookie_name=self.data.get("cookie_name", ""),
+                        )
+                    else:
+                        self._cached_image = await get_avatar(
+                            avatar_key,
+                            size="xl",
+                            auth_token=self.data.get("auth_token", ""),
+                            file_base_url=self.data.get("file_base_url", ""),
+                            cookie_name=self.data.get("cookie_name", ""),
+                        )
+                    self._cached_image_url = image_key
                 await body.mount(TImage(self._cached_image, id="look-avatar"))
             except Exception:
                 pass

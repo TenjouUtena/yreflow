@@ -383,7 +383,7 @@ class TestCharacterDataGathering:
         data = handler._gather_character_data("abc123def456")
         assert data["type"] == "character"
         assert "avatar" in data
-        assert "image_url" not in data
+        assert "image_id" in data
         assert data["auth_token"] == "fake-token"
         assert data["file_base_url"] == "https://file.wolfery.com"
         assert data["cookie_name"] == "wolfery-auth-token"

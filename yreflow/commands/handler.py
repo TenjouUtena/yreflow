@@ -1411,6 +1411,15 @@ class CommandHandler:
         # Avatar key
         avatar = s.get_character_attribute(char_id, "avatar", default="")
 
+        # Full image ID (from core.char.<id>.inroom.image ref)
+        image_id = ""
+        try:
+            image_ref = s.get_character_attribute(char_id, "image")
+            if isinstance(image_ref, dict) and "rid" in image_ref:
+                image_id = image_ref["rid"].split(".")[3]
+        except (KeyError, TypeError, IndexError):
+            pass
+
         return {
             "type": "character",
             "char_id": char_id,
@@ -1421,6 +1430,7 @@ class CommandHandler:
             "about": about,
             "tags": tags,
             "avatar": avatar,
+            "image_id": image_id,
             "auth_token": self.conn.token or "",
             "file_base_url": self.conn.realm.file_url,
             "cookie_name": self.conn.realm.cookie_name,
