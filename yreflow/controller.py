@@ -16,6 +16,7 @@ from .protocol.model_store import ModelStore
 from .protocol.connection import WolferyConnection
 from .protocol.controlled_char import ControlledChar
 from .protocol.http_auth import obtain_token
+from .protocol.avatar_service import AvatarService
 from .commands.handler import CommandHandler, CommandResult
 from .commands.console_handler import ConsoleHandler
 from .plugins import PluginManager
@@ -35,6 +36,7 @@ class Controller:
         self.commands = CommandHandler(self.connection, self.store)
         self.console_commands = ConsoleHandler(self.connection, self.store, self.commands)
         self.url_catcher = UrlCatcher(self.event_bus)
+        self.avatar_service = AvatarService()
         self.plugin_manager = PluginManager(self.event_bus, self.store, self.connection)
         self._reconnect_delay = 5.0
 

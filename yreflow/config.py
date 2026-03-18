@@ -70,6 +70,11 @@ def formatter_settings() -> dict:
     }
 
 
+def show_avatars() -> bool:
+    """Return whether inline avatars should be shown next to messages."""
+    return load_config().get("show_avatars", False)
+
+
 def _write_config(config: dict) -> None:
     """Write config dict as TOML to the config file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -89,10 +94,10 @@ def _write_config(config: dict) -> None:
                 if isinstance(v, str):
                     escaped = v.replace("\\", "\\\\").replace('"', '\\"')
                     lines.append(f'{k} = "{escaped}"')
-                elif isinstance(v, (int, float)):
-                    lines.append(f"{k} = {v}")
                 elif isinstance(v, bool):
                     lines.append(f"{k} = {'true' if v else 'false'}")
+                elif isinstance(v, (int, float)):
+                    lines.append(f"{k} = {v}")
         elif isinstance(value, list):
             items = ", ".join(f'"{v}"' for v in value)
             lines.append(f"{key} = [{items}]")

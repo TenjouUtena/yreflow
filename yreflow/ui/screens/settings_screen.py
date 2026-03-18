@@ -123,14 +123,16 @@ class SettingsScreen(TabbableModal, ModalScreen[None]):
         ("Markup Preview", "markup_preview_enabled"),
         ("Auto-Reconnect", "auto_reconnect"),
         ("Console Tab", "console_enabled"),
+        ("Show Avatars", "show_avatars"),
     ]
 
     def compose(self):
         config = load_config()
         with VerticalScroll(id="settings-container"):
             yield Static("Settings", id="settings-title")
+            _DEFAULTS = {"show_avatars": False}
             for label, key in self.SETTINGS:
-                yield _SettingRow(label, key, config.get(key, True))
+                yield _SettingRow(label, key, config.get(key, _DEFAULTS.get(key, True)))
 
             # Superscript style
             sup_style = config.get("superscript_style", "highlight")
