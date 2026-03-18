@@ -357,6 +357,14 @@ class CommandHandler:
             "function": self.handle_mute_ooc,
         }
 
+        patterns["mute_char"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("mute char "), lambda cmd: {"name": cmd[10:], "mute": True}),
+                (lambda cmd: cmd.startswith("unmute char "), lambda cmd: {"name": cmd[12:], "mute": False}),
+            ],
+            "function": self.handle_mute_char,
+        }
+
         patterns["nav"] = {
             "patterns": [
                 (lambda cmd: cmd.strip() == "nav", lambda cmd: ""),
@@ -1054,6 +1062,26 @@ class CommandHandler:
         )
         label = "muted" if mute else "unmuted"
         return CommandResult(notification=f"OOC messages {label}.")
+
+    async def handle_mute_char(self, content: dict, cc: ControlledChar) -> CommandResult:
+        player = self.conn.player
+        if not player:
+            return CommandResult(success=False, notification="Not connected.")
+        name = content["name"].strip()
+        mute = content["mute"]
+        if not name:
+            return CommandResult(success=False, notification="Usage: mute char <name>")
+        try:
+            char_id = parse_name(self.store, name, awake=False)
+        except NameParseException as e:
+            return CommandResult(success=False, notification=str(e))
+        await self.conn.send(
+            f"call.core.player.{player}.muteChars",
+            {"chars": {char_id: mute}},
+        )
+        label = "Muted" if mute else "Unmuted"
+        full_name = parse_name(self.store, name, wants="name", awake=False)
+        return CommandResult(notification=f"{label} {full_name}.")
 
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)
