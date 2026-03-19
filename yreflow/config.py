@@ -3,6 +3,7 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "yreflow"
 CONFIG_PATH = CONFIG_DIR / "config.toml"
+DELETED_CHARS_PATH = CONFIG_DIR / "deletedchars.toml"
 DEFAULT_LOG_DIR = CONFIG_DIR / "logs"
 
 
@@ -102,3 +103,20 @@ def _write_config(config: dict) -> None:
             items = ", ".join(f'"{v}"' for v in value)
             lines.append(f"{key} = [{items}]")
     CONFIG_PATH.write_text("\n".join(lines) + "\n")
+
+
+def load_deleted_chars() -> list[str]:
+    """Load the list of deleted character IDs from deletedchars.toml."""
+    if DELETED_CHARS_PATH.exists():
+        with open(DELETED_CHARS_PATH, "rb") as f:
+            data = tomllib.load(f)
+        return list(data.get("deleted", []))
+    return []
+
+
+def save_deleted_chars(char_ids: list[str]) -> None:
+    """Save the list of deleted character IDs to deletedchars.toml."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    unique = list(dict.fromkeys(char_ids))  # preserve order, deduplicate
+    items = ", ".join(f'"{cid}"' for cid in unique)
+    DELETED_CHARS_PATH.write_text(f"deleted = [{items}]\n")

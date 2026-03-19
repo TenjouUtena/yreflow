@@ -699,17 +699,27 @@ class CommandHandler:
         if not focus:
             return CommandResult(notification="No focus colors set.")
 
-        # Group targets by color
-        color_groups: dict[str, list[str]] = {}
+        # Build known results immediately; collect unknowns for server lookup
+        known: dict[str, list[str]] = {}     # color -> [name, ...]
+        unknown: dict[str, str] = {}         # target_id -> color
         for target_id, entry in focus.items():
             color = entry.get("data", {}).get("color", "unknown")
-            if color not in color_groups:
-                color_groups[color] = []
             name = self.store.get_character_attribute(target_id, "name", "")
             surname = self.store.get_character_attribute(target_id, "surname", "")
-            full = f"{name} {surname}".strip() or target_id
-            color_groups[color].append(full)
+            full = f"{name} {surname}".strip()
+            if full:
+                known.setdefault(color, []).append(full)
+            else:
+                unknown[target_id] = color
+                known.setdefault(color, []).append(target_id)
 
+        lines = self._format_focuscolors(known)
+
+        return CommandResult(display_text="\n".join(lines))
+
+    @staticmethod
+    def _format_focuscolors(color_groups: dict[str, list[str]]) -> list[str]:
+        """Format color groups into display lines."""
         lines = []
         for color, names in sorted(color_groups.items(), key=lambda x: len(x[1]), reverse=True):
             count = len(names)
@@ -717,8 +727,7 @@ class CommandHandler:
             if count > 3:
                 preview += "..."
             lines.append(f"[on {color}]  [/] {color} - {count} - {preview}")
-
-        return CommandResult(display_text="\n".join(lines))
+        return lines
 
     async def handle_summon(self, name_to_summon, cc: ControlledChar) -> CommandResult:
         try:
