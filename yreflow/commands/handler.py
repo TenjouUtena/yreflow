@@ -210,6 +210,14 @@ class CommandHandler:
             "function": self.handle_unfocus,
         }
 
+        patterns["focuscolors"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "focuscolors", lambda cmd: None),
+                (lambda cmd: cmd.strip() == "fc", lambda cmd: None),
+            ],
+            "function": self.handle_focuscolors,
+        }
+
         patterns["summon"] = {
             "patterns": [
                 (lambda cmd: cmd.startswith("summon "), lambda cmd: cmd[7:]),
@@ -685,6 +693,32 @@ class CommandHandler:
             f"call.core.player.{self.conn.player}.unfocusChar", params,
         )
         return CommandResult()
+
+    async def handle_focuscolors(self, _content, cc: ControlledChar) -> CommandResult:
+        focus = self.store.get_character_attribute(cc.char_id, "focus", {})
+        if not focus:
+            return CommandResult(notification="No focus colors set.")
+
+        # Group targets by color
+        color_groups: dict[str, list[str]] = {}
+        for target_id, entry in focus.items():
+            color = entry.get("data", {}).get("color", "unknown")
+            if color not in color_groups:
+                color_groups[color] = []
+            name = self.store.get_character_attribute(target_id, "name", "")
+            surname = self.store.get_character_attribute(target_id, "surname", "")
+            full = f"{name} {surname}".strip() or target_id
+            color_groups[color].append(full)
+
+        lines = []
+        for color, names in sorted(color_groups.items(), key=lambda x: len(x[1]), reverse=True):
+            count = len(names)
+            preview = ", ".join(names[:3])
+            if count > 3:
+                preview += "..."
+            lines.append(f"[on {color}]  [/] {color} - {count} - {preview}")
+
+        return CommandResult(display_text="\n".join(lines))
 
     async def handle_summon(self, name_to_summon, cc: ControlledChar) -> CommandResult:
         try:

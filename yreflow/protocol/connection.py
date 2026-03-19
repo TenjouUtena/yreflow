@@ -239,6 +239,8 @@ class WolferyConnection:
                 async with connect(
                     uri,
                     additional_headers=headers,
+                    ping_interval=30,
+                    ping_timeout=60,
                 ) as wsock:
                     await self._on_open(wsock)
                     await self._consumer_handler(wsock)
