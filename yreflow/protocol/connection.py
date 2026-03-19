@@ -3,11 +3,45 @@ import asyncio
 import hmac
 import hashlib
 import base64
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import websockets
 from websockets.asyncio.client import connect
+
+log = logging.getLogger("yreflow.ratelimit")
+
+
+class AsyncTokenBucket:
+    """Async token bucket rate limiter.
+
+    Allows *burst* immediate sends, then throttles to *rate* sends/sec.
+    """
+
+    def __init__(self, rate: float = 5.0, burst: int = 20):
+        self.rate = rate
+        self.burst = burst
+        self._tokens = float(burst)
+        self._last: float | None = None
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            loop = asyncio.get_event_loop()
+            now = loop.time()
+            if self._last is not None:
+                self._tokens = min(
+                    self.burst, self._tokens + (now - self._last) * self.rate
+                )
+            self._last = now
+            if self._tokens < 1:
+                wait = (1 - self._tokens) / self.rate
+                log.debug("Rate limiter: waiting %.3fs", wait)
+                await asyncio.sleep(wait)
+                self._tokens = 0
+            else:
+                self._tokens -= 1
 
 _PEPPER = b"TheStoryStartsHere"
 _MAX_DIRECTED = 20
@@ -74,6 +108,7 @@ class WolferyConnection:
         self.ctrl_chars: dict[str, ControlledChar] = {}
         self.last_seen: dict[str, int] = load_last_seen()
         self._connect_lock = asyncio.Lock()
+        self._rate_limiter = AsyncTokenBucket(rate=5.0, burst=10)
 
         # Register model watches
         self.store.add_watch(r"core\.player.*", self._on_player_event)
@@ -298,7 +333,13 @@ class WolferyConnection:
                 if self.wsock:
                     await self.wsock.close()
                 return
-            await self.event_bus.publish("protocol.error", data=j)
+            error_code = j["error"].get("code", "")
+            if "rate" in str(error_code).lower() or "rate" in j["error"].get("message", "").lower():
+                await self.event_bus.publish(
+                    "system.text", text="Rate limited by server. Slow down a bit."
+                )
+            else:
+                await self.event_bus.publish("protocol.error", data=j)
 
         if "result" in j:
             # Handle message waits
@@ -510,6 +551,7 @@ class WolferyConnection:
     async def send(self, method: str = "", params: dict | None = None) -> int:
         if self.wsock is None:
             return 0
+        await self._rate_limiter.acquire()
         self.id += 1
         msg = {"id": self.id, "method": method}
         if params:
