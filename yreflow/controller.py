@@ -62,9 +62,14 @@ class Controller:
         self.event_bus.subscribe(r"^mail\.result$", self._on_mail_result)
         self.event_bus.subscribe(r"^autocomplete\.results$", self._on_autocomplete_results)
 
-        # Rebuild sidebar when any character's LFRP or idle status changes
-        self.store.add_watch(r"^core\.char\.[^.]+\.lfrp", self._on_char_changed)
-        self.store.add_watch(r"^core\.char\.[^.]+\.idle", self._on_char_changed)
+        # Rebuild sidebar when any character's LFRP or idle status changes.
+        # Idle/lfrp arrive via 4 event variants whose store paths are:
+        #   core.char.<id>           (.change)
+        #   core.char.<id>.inroom    (.inroom.change)
+        #   core.char.<id>.ctrl      (.ctrl.change)
+        #   core.char.<id>.owned     (.owned.change)
+        self.store.add_watch(r"^core\.char\.[^.]+$", self._on_char_changed)
+        self.store.add_watch(r"^core\.char\.[^.]+\.(inroom|ctrl|owned)$", self._on_char_changed)
 
         # Notify unread mail on first load after connect
         self._mail_notified = False
@@ -202,7 +207,8 @@ class Controller:
         await self.ui.display_system_text(f"Protocol error: {message} ({code})")
 
     async def _on_char_changed(self, path: str, payload) -> None:
-        await self.ui.update_watch_list()
+        if isinstance(payload, dict) and {"idle", "lfrp", "rp"} & payload.keys():
+            await self.ui.update_watch_list()
 
     async def _on_token_expired(self, event_name: str, **kw) -> None:
         clear_token()
