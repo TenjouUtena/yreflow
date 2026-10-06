@@ -210,6 +210,14 @@ class CommandHandler:
             "function": self.handle_unfocus,
         }
 
+        patterns["focuscolors"] = {
+            "patterns": [
+                (lambda cmd: cmd.strip() == "focuscolors", lambda cmd: None),
+                (lambda cmd: cmd.strip() == "fc", lambda cmd: None),
+            ],
+            "function": self.handle_focuscolors,
+        }
+
         patterns["summon"] = {
             "patterns": [
                 (lambda cmd: cmd.startswith("summon "), lambda cmd: cmd[7:]),
@@ -355,6 +363,14 @@ class CommandHandler:
                 (lambda cmd: cmd.strip() == "unmute ooc", lambda cmd: False),
             ],
             "function": self.handle_mute_ooc,
+        }
+
+        patterns["mute_char"] = {
+            "patterns": [
+                (lambda cmd: cmd.startswith("mute char "), lambda cmd: {"name": cmd[10:], "mute": True}),
+                (lambda cmd: cmd.startswith("unmute char "), lambda cmd: {"name": cmd[12:], "mute": False}),
+            ],
+            "function": self.handle_mute_char,
         }
 
         patterns["nav"] = {
@@ -677,6 +693,41 @@ class CommandHandler:
             f"call.core.player.{self.conn.player}.unfocusChar", params,
         )
         return CommandResult()
+
+    async def handle_focuscolors(self, _content, cc: ControlledChar) -> CommandResult:
+        focus = self.store.get_character_attribute(cc.char_id, "focus", {})
+        if not focus:
+            return CommandResult(notification="No focus colors set.")
+
+        # Build known results immediately; collect unknowns for server lookup
+        known: dict[str, list[str]] = {}     # color -> [name, ...]
+        unknown: dict[str, str] = {}         # target_id -> color
+        for target_id, entry in focus.items():
+            color = entry.get("data", {}).get("color", "unknown")
+            name = self.store.get_character_attribute(target_id, "name", "")
+            surname = self.store.get_character_attribute(target_id, "surname", "")
+            full = f"{name} {surname}".strip()
+            if full:
+                known.setdefault(color, []).append(full)
+            else:
+                unknown[target_id] = color
+                known.setdefault(color, []).append(target_id)
+
+        lines = self._format_focuscolors(known)
+
+        return CommandResult(display_text="\n".join(lines))
+
+    @staticmethod
+    def _format_focuscolors(color_groups: dict[str, list[str]]) -> list[str]:
+        """Format color groups into display lines."""
+        lines = []
+        for color, names in sorted(color_groups.items(), key=lambda x: len(x[1]), reverse=True):
+            count = len(names)
+            preview = ", ".join(names[:3])
+            if count > 3:
+                preview += "..."
+            lines.append(f"[on {color}]  [/] {color} - {count} - {preview}")
+        return lines
 
     async def handle_summon(self, name_to_summon, cc: ControlledChar) -> CommandResult:
         try:
@@ -1054,6 +1105,26 @@ class CommandHandler:
         )
         label = "muted" if mute else "unmuted"
         return CommandResult(notification=f"OOC messages {label}.")
+
+    async def handle_mute_char(self, content: dict, cc: ControlledChar) -> CommandResult:
+        player = self.conn.player
+        if not player:
+            return CommandResult(success=False, notification="Not connected.")
+        name = content["name"].strip()
+        mute = content["mute"]
+        if not name:
+            return CommandResult(success=False, notification="Usage: mute char <name>")
+        try:
+            char_id = parse_name(self.store, name, awake=False)
+        except NameParseException as e:
+            return CommandResult(success=False, notification=str(e))
+        await self.conn.send(
+            f"call.core.player.{player}.muteChars",
+            {"chars": {char_id: mute}},
+        )
+        label = "Muted" if mute else "Unmuted"
+        full_name = parse_name(self.store, name, wants="name", awake=False)
+        return CommandResult(notification=f"{label} {full_name}.")
 
     async def handle_nav(self, content: str, cc: ControlledChar) -> CommandResult:
         return CommandResult(toggle_nav=True)

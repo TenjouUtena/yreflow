@@ -34,7 +34,7 @@ class UrlCatcher:
     async def _on_url_found(self, event_name: str, display_text: str, url: str, **kw) -> None:
         self.capture(display_text, url)
 
-    def recent(self, n: int = 20) -> list[CaughtUrl]:
+    def recent(self, n: int = 50) -> list[CaughtUrl]:
         """Return the last *n* URLs, most recent last."""
         items = list(self._urls.values())
         return items[-n:]

@@ -24,7 +24,7 @@ from .screens.profile_select import ProfileSelectScreen
 from .screens.store_browser import StoreBrowserScreen
 from .screens.url_screen import UrlScreen
 from .screens.settings_screen import SettingsScreen
-from ..config import load_config, save_preference, formatter_settings
+from ..config import load_config, save_preference, formatter_settings, show_avatars
 from ..formatter import format_message
 from .format_line import (
     format_line as _format_line_fn,
@@ -662,9 +662,21 @@ class WolferyApp(App):
 
         focus_color = self._get_focus_color(sender_id, character)
 
+        # Inline avatar
+        avatar_markup = None
+        if show_avatars() and sender_id and self.controller:
+            svc = self.controller.avatar_service
+            avatar_markup = svc.get_avatar_markup(sender_id)
+            svc.ensure_cached(
+                sender_id,
+                self.controller.store,
+                self.controller.connection.token,
+            )
+
         line = self._format_line(
             style, sender, msg_text, target_name,
             has_pose, is_ooc, timestamp, focus_color,
+            avatar_markup=avatar_markup,
         )
         view.write(f"{line}")
 
@@ -700,9 +712,11 @@ class WolferyApp(App):
         is_ooc: bool,
         timestamp: str,
         focus_color: str | None = None,
+        avatar_markup: str | None = None,
     ) -> str:
         return _format_line_fn(
-            style, sender, msg, target_name, has_pose, is_ooc, timestamp, focus_color
+            style, sender, msg, target_name, has_pose, is_ooc, timestamp, focus_color,
+            avatar_markup=avatar_markup,
         )
 
     async def display_system_text(self, text: str) -> None:

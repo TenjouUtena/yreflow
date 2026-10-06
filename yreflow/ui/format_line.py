@@ -57,9 +57,12 @@ def format_line(
     is_ooc: bool,
     timestamp: str,
     focus_color: str | None = None,
+    avatar_markup: str | None = None,
 ) -> str:
     """Format a single message line into Rich markup."""
     ts = format_timestamp(timestamp, focus_color)
+    if avatar_markup:
+        ts = f"{ts}{avatar_markup} "
     sep = "" if msg and msg[0] in _ELIDE_SPACE_CHARS else " "
 
     if is_ooc and style not in ("ooc",):
