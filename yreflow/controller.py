@@ -68,8 +68,13 @@ class Controller:
         #   core.char.<id>.inroom    (.inroom.change)
         #   core.char.<id>.ctrl      (.ctrl.change)
         #   core.char.<id>.owned     (.owned.change)
-        self.store.add_watch(r"^core\.char\.[^.]+$", self._on_char_changed)
-        self.store.add_watch(r"^core\.char\.[^.]+\.(inroom|ctrl|owned)$", self._on_char_changed)
+
+        # Rebuild sidebar when any character's LFRP or idle status changes
+        self.store.add_watch(r"^core\.char\.[^.]+\.lfrp", self._on_char_changed)
+        self.store.add_watch(r"^core\.char\.[^.]+\.idle", self._on_char_changed)
+
+        #self.store.add_watch(r"^core\.char\.[^.]+$", self._on_char_changed)
+        #self.store.add_watch(r"^core\.char\.[^.]+\.(inroom|ctrl|owned)$", self._on_char_changed)
 
         # Notify unread mail on first load after connect
         self._mail_notified = False
