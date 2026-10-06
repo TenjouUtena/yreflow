@@ -1,4 +1,5 @@
 import tomllib
+import tomli_w
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "yreflow"
@@ -79,30 +80,8 @@ def show_avatars() -> bool:
 def _write_config(config: dict) -> None:
     """Write config dict as TOML to the config file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    lines = []
-    for key, value in config.items():
-        if isinstance(value, str):
-            # Escape backslashes and quotes for TOML string
-            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-            lines.append(f'{key} = "{escaped}"')
-        elif isinstance(value, bool):
-            lines.append(f"{key} = {'true' if value else 'false'}")
-        elif isinstance(value, (int, float)):
-            lines.append(f"{key} = {value}")
-        elif isinstance(value, dict):
-            lines.append(f"\n[{key}]")
-            for k, v in value.items():
-                if isinstance(v, str):
-                    escaped = v.replace("\\", "\\\\").replace('"', '\\"')
-                    lines.append(f'{k} = "{escaped}"')
-                elif isinstance(v, bool):
-                    lines.append(f"{k} = {'true' if v else 'false'}")
-                elif isinstance(v, (int, float)):
-                    lines.append(f"{k} = {v}")
-        elif isinstance(value, list):
-            items = ", ".join(f'"{v}"' for v in value)
-            lines.append(f"{key} = [{items}]")
-    CONFIG_PATH.write_text("\n".join(lines) + "\n")
+    with open(CONFIG_PATH, "wb") as f:
+        tomli_w.dump(config, f)
 
 
 def load_deleted_chars() -> list[str]:
