@@ -15,7 +15,7 @@ log = logging.getLogger("yreflow.controller")
 # macOS/Windows SSL cert validation via Keychain/Crypto APIs
 if sys.platform in ("darwin", "win32"):
     try:
-        # macOS 10.15+ or
+        # macOS 10.15+ or Windows XP+
         import truststore
         truststore.inject_into_ssl()
     except ImportError:
