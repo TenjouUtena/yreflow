@@ -7,9 +7,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from typing import TYPE_CHECKING
 
 log = logging.getLogger("yreflow.controller")
+
+# macOS/Windows SSL cert validation via Keychain/Crypto APIs
+if sys.platform in ("darwin", "win32"):
+    try:
+        # macOS 10.15+ or Windows XP+
+        import truststore
+        truststore.inject_into_ssl()
+    except ImportError:
+        # Fall back to Python's certificates, if present.
+        # Could use certifi to import Mozlla keychain, but
+        # Python 3.10 dropped macOS 10.14 builds anyway
+        pass
 
 from .protocol.events import EventBus
 from .protocol.model_store import ModelStore
